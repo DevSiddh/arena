@@ -262,6 +262,19 @@ export function prerequisitesOf(conceptId: string, seen = new Set<string>()): st
   return [...seen];
 }
 
+export interface LessonRef {
+  id: string;
+  domainId: string;
+  title: string;
+}
+
+/** Lessons in curriculum order: domain D01 → L01 … D15 → L15 (one lesson per domain). */
+export function LESSONS_BY_DOMAIN_ORDER(): LessonRef[] {
+  return DOMAINS.map((d, i) => ({ id: `L${String(i + 1).padStart(2, '0')}`, domainId: d.id, title: d.title }));
+}
+
+export const LESSON_ORDER: string[] = LESSONS_BY_DOMAIN_ORDER().map((l) => l.id);
+
 export function conceptsOfDomain(domainId: string): ConceptDef[] {
   return CONCEPTS.filter((c) => c.domainId === domainId);
 }

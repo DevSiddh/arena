@@ -1,46 +1,39 @@
 /**
  * Exam mode — the 90-minute simulation.
  *
- * Design constraints that come straight from the brief and are enforced structurally here:
- *   - a fixed, blueprint-driven form (guaranteed coverage of the four officially demonstrated
- *     domains, plus spread across the broader preparation map);
- *   - four options, exactly one correct, no notes, no hints, no instant feedback: the student
- *     view built by `studentView()` cannot contain the answer key, difficulty, error tags or
- *     explanations, and `leakCheck()` proves it;
- *   - a countdown, free navigation, flagging, and an explicit unanswered policy;
- *   - on submission: score, accuracy, time, per-topic and per-reasoning-type breakdown, and a
- *     cause-based diagnosis (see engine/evidence.ts) instead of a bare percentage.
+ * This module is deliberately separate from `engine/diagnostics.ts`: an exam has no hints, no
+ * instant feedback, no retry, no visible difficulty and no remediation inserted mid-sitting. The
+ * separation is structural, not a matter of UI discipline:
  *
- * Nothing arcade-like exists in this module: no streaks, no XP, no hint button, no option
- * elimination, no visible difficulty, no immediate answer reveal. Post-exam review is a
- * separate, explicit step.
+ *   - `studentView()` is the *only* object the exam UI renders, and it carries no key, no
+ *     explanations, no difficulty and no error tags. `leakCheck()` walks that view on every build
+ *     and fails the build if any of those fields ever reach it.
+ *   - Answer keys live on the internal `ExamForm` and are used only by `submit()`.
+ *   - The diagnosis after submission comes from the shared `engine/evidence.ts` core, so the exam
+ *     and the training mode explain a failure the same way (cause, not score).
+ *
+ * Blueprint honesty: the domain weights follow the official material (the four demonstrated domains
+ * dominate), but the item count, the level mix and the reasoning minimums are our documented design
+ * decisions — the official material publishes no question count. `coverageOf()` reports every
+ * target the bank could not meet instead of quietly missing it.
  */
 
 import type {
   Bank,
   CognitiveMove,
+  ConfidenceLabel,
   Difficulty,
-  Figure,
+  ErrorTag,
+  ItemStyle,
   Question,
   ReasoningType,
-  Stimulus,
 } from './types';
 import { DIFFICULTY_TEXT, MOVE_TEXT } from './types';
 import { CONCEPT_BY_ID, DOMAINS, DOMAIN_BY_ID } from './curriculum';
-import { makeRng, type Rng } from './rng';
-import {
-  conceptStats,
-  diagnose,
-  evidenceFromAttempt,
-  errorProfile,
-  overallAccuracy,
-  sliceBy,
-  type AttemptEvidence,
-  type ConceptStat,
-  type Diagnosis,
-  type ErrorProfileEntry,
-  type Slice,
-} from './evidence';
+import { makeRng } from './rng';
+import type { Rng } from './rng';
+import { conceptStats, diagnose, evidenceFromAttempt, errorProfile, sliceBy } from './evidence';
+import type { AttemptEvidence, Diagnosis, ErrorProfileEntry, Slice } from './evidence';
 
 /* ------------------------------------------------------------------ blueprint */
 
@@ -49,62 +42,28 @@ export interface ExamBlueprint {
   title: string;
   durationMinutes: number;
   questionCount: number;
-  /** Items per domain. Domains with officially demonstrated content carry the most weight. */
   domainTargets: Record<string, number>;
-  /** Soft target for the difficulty mix — a 90-minute sitting, not a training session. */
   levelTargets: Partial<Record<Difficulty, number>>;
-  /** Minimum number of items per cognitive move, so all six official moves appear. */
   moveMinimums: Partial<Record<CognitiveMove, number>>;
-  /** Minimum number of items per reasoning type where the bank can supply it. */
   reasoningMinimums: Partial<Record<ReasoningType, number>>;
-  /** Text blocks (official two-part item anatomy) to include, and their size range. */
   stimulusBlocks: { min: number; max: number; sizeMin: number; sizeMax: number };
   instructions: string[];
-  /** Transparency about what is official and what is our design decision. */
   designNotes: string[];
 }
 
 /**
- * 40 items in 90 minutes ≈ 2 min 15 s per item, which matches the no-notes, single-choice,
- * calculator-free setting the official material describes. The duration is the module length
- * used throughout this project; the item count and the weighting are a preparation design
- * decision, not a published dMAT specification.
+ * 40 items in 90 minutes ≈ 2 min 15 s per item. The level and reasoning minimums are the shape of a
+ * real sitting: mostly application (levels 2–5), a few exam-style items (6), and a small number of
+ * advanced-transfer items (7) so that a strong student is still discriminated.
  */
 export const EXAM_BLUEPRINT: ExamBlueprint = {
   id: 'GAM-SIM-90',
   title: 'General Academic Module — 90-minute simulation',
   durationMinutes: 90,
   questionCount: 40,
-  domainTargets: {
-    // four officially demonstrated domains
-    D02: 5,
-    D06: 5,
-    D09: 5,
-    D11: 4,
-    // prerequisite / officially named quantitative areas
-    D01: 3,
-    D03: 3,
-    D04: 2,
-    // named field areas developed as preparation extensions
-    D05: 2,
-    D07: 2,
-    D08: 2,
-    D10: 2,
-    // methodology, science reasoning, computational thinking, argument
-    D12: 2,
-    D13: 1,
-    D14: 1,
-    D15: 1,
-  },
+  domainTargets: { D02: 5, D06: 5, D09: 5, D11: 4, D01: 3, D03: 3, D04: 2, D05: 2, D07: 2, D08: 2, D10: 2, D12: 2, D13: 1, D14: 1, D15: 1 },
   levelTargets: { 2: 6, 3: 10, 4: 9, 5: 8, 6: 5, 7: 2 },
-  moveMinimums: {
-    execute_rule: 6,
-    interpret_representation: 4,
-    effect_of_change: 4,
-    general_case: 3,
-    explain_or_critique: 3,
-    classify_situation: 3,
-  },
+  moveMinimums: { execute_rule: 6, interpret_representation: 4, effect_of_change: 4, general_case: 3, explain_or_critique: 3, classify_situation: 3 },
   reasoningMinimums: {
     rule_application: 5,
     multi_step_application: 5,
@@ -132,9 +91,14 @@ export const EXAM_BLUEPRINT: ExamBlueprint = {
   ],
 };
 
-/* ------------------------------------------------------------------ form items */
+/** Reference time per item, by difficulty: the pacing benchmark of the report. */
+function targetMsFor(d: Difficulty): number {
+  const table: Record<Difficulty, number> = { 1: 60_000, 2: 90_000, 3: 120_000, 4: 150_000, 5: 170_000, 6: 200_000, 7: 220_000 };
+  return table[d];
+}
 
-/** What the exam engine keeps per item. Never handed to the student as-is. */
+/* ------------------------------------------------------------------ form */
+
 export interface ExamItem {
   position: number;
   questionId: string;
@@ -143,56 +107,15 @@ export interface ExamItem {
   difficulty: Difficulty;
   reasoningType: ReasoningType;
   cognitiveMove: CognitiveMove;
-  style: Question['style'];
+  style: ItemStyle;
   stem: string;
-  figure?: Figure;
-  /** Option texts only — no rationales, no error tags. */
+  figure?: Question['figure'];
   optionTexts: string[];
   stimulusId?: string;
-  /** Answer key for scoring. Stripped by studentView(). */
+  /** Internal: used by `submit()` only, never by the student view. */
   correctIndex: number;
-  /** Per-item reference time used by the pacing analysis (milliseconds). */
+  /** Reference time for pacing analysis. */
   targetMs: number;
-}
-
-export interface StudentExamItem {
-  index: number;
-  itemId: string;
-  stem: string;
-  figure?: Figure;
-  options: string[];
-  stimulusId?: string;
-}
-
-export interface StudentExamStimulus {
-  id: string;
-  title: string;
-  label: Stimulus['label'];
-  body: string;
-  figure?: Figure;
-  itemIds: string[];
-  officialExercise?: string;
-}
-
-export interface StudentExamForm {
-  id: string;
-  blueprintId: string;
-  title: string;
-  durationMinutes: number;
-  itemCount: number;
-  instructions: string[];
-  items: StudentExamItem[];
-  stimuli: StudentExamStimulus[];
-}
-
-export interface ExamForm {
-  id: string;
-  seed: number;
-  blueprint: ExamBlueprint;
-  createdAt: string;
-  items: ExamItem[];
-  /** Coverage actually achieved, including anything the blueprint asked for and could not get. */
-  coverage: ExamCoverage;
 }
 
 export interface ExamCoverage {
@@ -204,12 +127,13 @@ export interface ExamCoverage {
   unmet: string[];
 }
 
-/* ------------------------------------------------------------------ assembly */
-
-function targetMsFor(d: Difficulty): number {
-  // 90 minutes / 40 items = 135 s. Foundation items should take less, the hardest more.
-  const table: Record<Difficulty, number> = { 1: 60_000, 2: 90_000, 3: 120_000, 4: 150_000, 5: 170_000, 6: 200_000, 7: 220_000 };
-  return table[d];
+export interface ExamForm {
+  id: string;
+  seed: number;
+  blueprint: ExamBlueprint;
+  createdAt: string;
+  items: ExamItem[];
+  coverage: ExamCoverage;
 }
 
 function toExamItem(q: Question, position: number): ExamItem {
@@ -232,14 +156,14 @@ function toExamItem(q: Question, position: number): ExamItem {
 }
 
 interface Deficit {
-  level: Map<Difficulty, number>;
-  move: Map<CognitiveMove, number>;
-  reasoning: Map<ReasoningType, number>;
+  level: Map<number, number>;
+  move: Map<string, number>;
+  reasoning: Map<string, number>;
 }
 
-/** How much a candidate item helps close a blueprint deficit (higher = more useful). */
-function candidateValue(q: Question, d: Deficit, usedConcepts: Set<string>, usedStyles: Set<string>, rng: Rng): number {
-  const levelNeed = Math.max(0, (d.level.get(q.difficulty) ?? 0));
+/** Value of a candidate item: how much of the still-missing blueprint shape it closes. */
+function candidateValue(q: Question, d: Deficit, usedConcepts: Set<string>, usedStyles: Set<ItemStyle>, rng: Rng): number {
+  const levelNeed = Math.max(0, d.level.get(q.difficulty) ?? 0);
   const moveNeed = Math.max(0, d.move.get(q.cognitiveMove) ?? 0);
   const reasonNeed = Math.max(0, d.reasoning.get(q.reasoningType) ?? 0);
   const conceptNovelty = q.conceptIds.every((c) => !usedConcepts.has(c)) ? 1 : q.conceptIds.some((c) => !usedConcepts.has(c)) ? 0.4 : 0;
@@ -248,46 +172,38 @@ function candidateValue(q: Question, d: Deficit, usedConcepts: Set<string>, used
 }
 
 function consume(q: Question, d: Deficit): void {
-  const dec = <K,>(m: Map<K, number>, k: K) => m.set(k, Math.max(0, (m.get(k) ?? 0) - 1));
+  const dec = (m: Map<string | number, number>, k: string | number) => m.set(k, Math.max(0, (m.get(k) ?? 0) - 1));
   dec(d.level, q.difficulty);
   dec(d.move, q.cognitiveMove);
   dec(d.reasoning, q.reasoningType);
 }
 
-/**
- * Build the exam form.
- *
- * Selection is deterministic for a given (bank, seed): each slot takes the candidate that best
- * closes the outstanding blueprint deficits, with a seeded jitter so that repeated builds with
- * different seeds produce genuinely different papers.
- */
-export function buildExamForm(
-  bank: Bank,
-  seed: number,
-  blueprint: ExamBlueprint = EXAM_BLUEPRINT,
-  builtAt: string = new Date().toISOString(),
-): ExamForm {
+export function buildExamForm(bank: Bank, seed: number, blueprint: ExamBlueprint = EXAM_BLUEPRINT, builtAt = new Date().toISOString()): ExamForm {
   const rng = makeRng(seed);
   const items: ExamItem[] = [];
   const chosen = new Set<string>();
   const usedConcepts = new Set<string>();
-  const usedStyles = new Set<string>();
+  const usedStyles = new Set<ItemStyle>();
   const stimulusCount = new Map<string, number>();
-
   const deficit: Deficit = {
-    level: new Map(Object.entries(blueprint.levelTargets).map(([k, v]) => [Number(k) as Difficulty, v as number])),
-    move: new Map(Object.entries(blueprint.moveMinimums).map(([k, v]) => [k as CognitiveMove, v as number])),
-    reasoning: new Map(Object.entries(blueprint.reasoningMinimums).map(([k, v]) => [k as ReasoningType, v as number])),
+    level: new Map(Object.entries(blueprint.levelTargets).map(([k, v]) => [Number(k), v as number])),
+    move: new Map(Object.entries(blueprint.moveMinimums).map(([k, v]) => [k, v as number])),
+    reasoning: new Map(Object.entries(blueprint.reasoningMinimums).map(([k, v]) => [k, v as number])),
   };
-
   const pool = bank.questions.filter((q) => q.options.length === 4 && q.correctIndex >= 0 && q.correctIndex < 4);
   const unmet: string[] = [];
 
-  // Pass 1 — one slot list per domain, in blueprint order (official domains first).
+  const commit = (q: Question) => {
+    chosen.add(q.id);
+    for (const c of q.conceptIds) usedConcepts.add(c);
+    usedStyles.add(q.style);
+    consume(q, deficit);
+    if (q.stimulusId) stimulusCount.set(q.stimulusId, (stimulusCount.get(q.stimulusId) ?? 0) + 1);
+    items.push(toExamItem(q, items.length));
+  };
+
   const domainOrder = Object.keys(blueprint.domainTargets).sort(
-    (a, b) =>
-      (blueprint.domainTargets[b] ?? 0) - (blueprint.domainTargets[a] ?? 0) ||
-      (DOMAIN_BY_ID[a]?.title ?? a).localeCompare(DOMAIN_BY_ID[b]?.title ?? b),
+    (a, b) => (blueprint.domainTargets[b] ?? 0) - (blueprint.domainTargets[a] ?? 0) || (DOMAIN_BY_ID[a]?.title ?? a).localeCompare(DOMAIN_BY_ID[b]?.title ?? b),
   );
 
   const pickFor = (domainId: string): Question | null => {
@@ -305,6 +221,7 @@ export function buildExamForm(
     return best;
   };
 
+  // 1. Domain quotas, biggest first: the official domains are guaranteed their share.
   for (const domainId of domainOrder) {
     const want = blueprint.domainTargets[domainId] ?? 0;
     let got = 0;
@@ -321,7 +238,7 @@ export function buildExamForm(
     if (items.length >= blueprint.questionCount) break;
   }
 
-  // Pass 2 — fill up to the required size from the whole pool, still closing deficits.
+  // 2. Top up to the full length by blueprint deficit.
   while (items.length < blueprint.questionCount) {
     const candidates = pool.filter((q) => !chosen.has(q.id));
     if (!candidates.length) {
@@ -341,23 +258,10 @@ export function buildExamForm(
     commit(best);
   }
 
-  function commit(q: Question): void {
-    chosen.add(q.id);
-    for (const c of q.conceptIds) usedConcepts.add(c);
-    usedStyles.add(q.style);
-    consume(q, deficit);
-    if (q.stimulusId) stimulusCount.set(q.stimulusId, (stimulusCount.get(q.stimulusId) ?? 0) + 1);
-    items.push(toExamItem(q, items.length));
-  }
-
-  // Pass 3 — stimulus hygiene: drop orphan single items from a text block, then make sure at
-  // least `min` blocks of usable size survive by swapping singletons for block siblings when
-  // the bank can supply them.
+  // 3. Text blocks: keep only blocks of a usable size, then arrange them as two-part items.
   repairStimulusBlocks(items, pool, chosen, stimulusCount, blueprint, unmet);
-
   arrange(items, blueprint, rng);
 
-  // Top up after arrangement: dropping an orphan block member must not shrink the paper.
   while (items.length < blueprint.questionCount) {
     const next = pool.find((q) => !chosen.has(q.id));
     if (!next) {
@@ -371,16 +275,14 @@ export function buildExamForm(
 
   const coverage = coverageOf(items, blueprint);
   coverage.unmet = unmet;
-  return {
-    id: `EXAM-${seed}`,
-    seed,
-    blueprint,
-    createdAt: builtAt,
-    items,
-    coverage,
-  };
+  return { id: `EXAM-${seed}`, seed, blueprint, createdAt: builtAt, items, coverage };
 }
 
+/**
+ * A stimulus block with only one question is dropped (it is not the official two-part anatomy); a
+ * block with too few is filled from its siblings, and an oversized one is trimmed. Anything that
+ * cannot be fixed is reported in `unmet`.
+ */
 function repairStimulusBlocks(
   items: ExamItem[],
   pool: Question[],
@@ -389,9 +291,9 @@ function repairStimulusBlocks(
   blueprint: ExamBlueprint,
   unmet: string[],
 ): void {
-  // 1. Remove lone block members (a passage followed by a single item is not the official anatomy).
   const counts = new Map<string, number>();
   for (const it of items) if (it.stimulusId) counts.set(it.stimulusId, (counts.get(it.stimulusId) ?? 0) + 1);
+
   for (let i = items.length - 1; i >= 0; i--) {
     const sid = items[i].stimulusId;
     if (sid && (counts.get(sid) ?? 0) < 2) {
@@ -401,7 +303,6 @@ function repairStimulusBlocks(
     }
   }
 
-  // 2. Grow the surviving blocks to a usable size where the bank has siblings.
   const blocks = [...counts.entries()].filter(([, n]) => n >= 2);
   for (const [sid, n] of blocks) {
     for (let fill = n; fill < blueprint.stimulusBlocks.sizeMin; fill++) {
@@ -413,7 +314,6 @@ function repairStimulusBlocks(
     }
   }
 
-  // 3. Trim blocks that grew beyond the maximum, keeping the lowest positions.
   for (const [sid, n] of [...counts.entries()]) {
     if (n <= blueprint.stimulusBlocks.sizeMax) continue;
     let toDrop = n - blueprint.stimulusBlocks.sizeMax;
@@ -429,10 +329,9 @@ function repairStimulusBlocks(
 
   const usable = [...counts.values()].filter((n) => n >= blueprint.stimulusBlocks.sizeMin).length;
   if (usable < blueprint.stimulusBlocks.min) {
-    unmet.push(
-      `text blocks: ${usable} usable block(s) available, blueprint asks for ${blueprint.stimulusBlocks.min} — the bank needs more authored questions inside a stimulus block`,
-    );
+    unmet.push(`text blocks: ${usable} usable block(s) available, blueprint asks for ${blueprint.stimulusBlocks.min} — the bank needs more authored questions inside a stimulus block`);
   }
+
   while (items.length < blueprint.questionCount) {
     const next = pool.find((q) => !chosen.has(q.id));
     if (!next) break;
@@ -442,7 +341,7 @@ function repairStimulusBlocks(
 }
 
 function coverageOf(items: ExamItem[], blueprint: ExamBlueprint): ExamCoverage {
-  const tally = <T extends string | number>(xs: T[]): Record<string, number> =>
+  const tally = (xs: (string | number)[]): Record<string, number> =>
     xs.reduce<Record<string, number>>((acc, k) => ({ ...acc, [String(k)]: (acc[String(k)] ?? 0) + 1 }), {});
   const blocks = new Set(items.filter((i) => i.stimulusId).map((i) => i.stimulusId as string));
   const unmet: string[] = [];
@@ -469,9 +368,9 @@ function coverageOf(items: ExamItem[], blueprint: ExamBlueprint): ExamCoverage {
 }
 
 /**
- * Order the paper. Block items stay together in reading order; standalone items are interleaved
- * across domains (no long runs of one topic) and arranged so the form does not open with the
- * hardest material. No difficulty information is shown to the student.
+ * Arrange the form: interleave domains so that no two consecutive items come from the same topic,
+ * keep each text block together, and place blocks from the second quarter onwards (as in the
+ * official material, where the two-part items follow straight single items).
  */
 function arrange(items: ExamItem[], blueprint: ExamBlueprint, rng: Rng): void {
   const blocks = new Map<string, ExamItem[]>();
@@ -483,19 +382,14 @@ function arrange(items: ExamItem[], blueprint: ExamBlueprint, rng: Rng): void {
       else blocks.set(it.stimulusId, [it]);
     } else singles.push(it);
   }
-  // A passage plus two questions is a legitimate two-part item; blocks are kept if they have at
-  // least two questions, and only the first `max` blocks are placed as blocks. Everything else
-  // is placed as a standalone item — nothing is ever silently dropped.
-  const grouped = [...blocks.entries()]
-    .filter(([, b]) => b.length >= 2)
-    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+
+  const grouped = [...blocks.entries()].filter(([, b]) => b.length >= 2).sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
   const blockList = grouped.slice(0, blueprint.stimulusBlocks.max).map(([id, b]) => ({ id, items: b.sort((a, c) => a.position - c.position) }));
   const placedIds = new Set(blockList.flatMap((b) => b.items.map((i) => i.questionId)));
   for (const [, b] of grouped.slice(blueprint.stimulusBlocks.max)) {
     for (const it of b) if (!placedIds.has(it.questionId)) singles.push(it);
   }
 
-  // Singletons: interleave domains, easing upward in difficulty within each domain.
   const byDomain = new Map<string, ExamItem[]>();
   for (const it of singles) {
     const g = byDomain.get(it.domainId);
@@ -503,10 +397,14 @@ function arrange(items: ExamItem[], blueprint: ExamBlueprint, rng: Rng): void {
     else byDomain.set(it.domainId, [it]);
   }
   for (const g of byDomain.values()) g.sort((a, b) => a.difficulty - b.difficulty || (rng.chance(0.5) ? -1 : 1));
-  const order = [...byDomain.keys()].sort((a, b) => (byDomain.get(a)!.length === byDomain.get(b)!.length ? a.localeCompare(b) : byDomain.get(b)!.length - byDomain.get(a)!.length));
+
+  const order = [...byDomain.keys()].sort((a, b) =>
+    byDomain.get(a)!.length === byDomain.get(b)!.length ? a.localeCompare(b) : byDomain.get(b)!.length - byDomain.get(a)!.length,
+  );
+
   const interleaved: ExamItem[] = [];
   let remaining = singles.length;
-  let cursor = 0;
+  let guard = 0;
   while (remaining > 0) {
     for (const d of order) {
       const q = byDomain.get(d)!.shift();
@@ -515,11 +413,10 @@ function arrange(items: ExamItem[], blueprint: ExamBlueprint, rng: Rng): void {
         remaining -= 1;
       }
     }
-    cursor += 1;
-    if (cursor > 500) break;
+    guard += 1;
+    if (guard > 500) break;
   }
 
-  // Place blocks after the first quarter, then every ~10 items, keeping them contiguous.
   const out: ExamItem[] = [];
   const placeAt = new Set<number>();
   const firstAt = Math.max(4, Math.floor(interleaved.length / 4));
@@ -540,19 +437,46 @@ function arrange(items: ExamItem[], blueprint: ExamBlueprint, rng: Rng): void {
     out.push(...blockList[bIndex].items);
     bIndex += 1;
   }
-  // Safety net: every item handed in must come out exactly once.
   const emitted = new Set(out.map((i) => i.questionId));
   for (const it of items) if (!emitted.has(it.questionId)) out.push(it);
-  // Items that ended up outside their block keep working standalone: they no longer claim a
-  // passage that the form does not show. Bank items inside a stimulus block are self-contained
-  // by construction (the block body is background material).
+  // Items whose block was dropped must no longer claim a stimulus.
   for (const it of out) if (it.stimulusId && !placedIds.has(it.questionId)) delete it.stimulusId;
   items.splice(0, items.length, ...out);
 }
 
-/* ------------------------------------------------------------------ student view */
+/* ------------------------------------------------------------------ student view (no leaks) */
 
-export function studentView(form: ExamForm, bank: Bank): StudentExamForm {
+export interface ExamStudentItem {
+  index: number;
+  itemId: string;
+  stem: string;
+  figure?: Question['figure'];
+  options: string[];
+  stimulusId?: string;
+}
+
+export interface ExamStudentStimulus {
+  id: string;
+  title: string;
+  label: ConfidenceLabel;
+  body: string;
+  figure?: Question['figure'];
+  itemIds: string[];
+  officialExercise?: string;
+}
+
+export interface ExamStudentView {
+  id: string;
+  blueprintId: string;
+  title: string;
+  durationMinutes: number;
+  itemCount: number;
+  instructions: string[];
+  items: ExamStudentItem[];
+  stimuli: ExamStudentStimulus[];
+}
+
+export function studentView(form: ExamForm, bank: Bank): ExamStudentView {
   const stimuliById = new Map(bank.stimuli.map((s) => [s.id, s]));
   const usedStimuli = new Set(form.items.map((i) => i.stimulusId).filter((x): x is string => !!x));
   const itemId = (i: ExamItem) => `i${i.position + 1}`;
@@ -573,7 +497,7 @@ export function studentView(form: ExamForm, bank: Bank): StudentExamForm {
     })),
     stimuli: [...usedStimuli]
       .map((sid) => stimuliById.get(sid))
-      .filter((s): s is Stimulus => !!s)
+      .filter((s): s is NonNullable<typeof s> => !!s)
       .map((s) => ({
         id: s.id,
         title: s.title,
@@ -586,51 +510,48 @@ export function studentView(form: ExamForm, bank: Bank): StudentExamForm {
   };
 }
 
+/** Fields that must never appear in anything the student can see during a sitting. */
+const LEAK_FIELDS = ['correctIndex', 'explanation', 'hints', 'errorTag', 'rationale', 'difficulty', 'reasoningType', 'cognitiveMove', 'verification', 'answerKey'];
+
 /**
- * Structural guarantee that exam mode leaks nothing. Returns the list of leaks (empty = clean).
- * Used by the build script and available to the UI as a runtime assertion in development.
+ * Walk a rendered object and return the paths of any leaked answer-bearing field. Called on every
+ * build; a non-empty result fails the build (see `scripts/build-bank.ts`).
  */
-export function leakCheck(view: StudentExamForm | unknown): string[] {
+export function leakCheck(node: unknown, path = 'view', depth = 0): string[] {
   const leaks: string[] = [];
-  const walk = (node: unknown, path: string, depth: number): void => {
-    if (depth > 24 || node === null || node === undefined) return;
-    if (Array.isArray(node)) {
-      node.forEach((v, i) => walk(v, `${path}[${i}]`, depth + 1));
+  const walk = (n: unknown, p: string, d: number) => {
+    if (d > 24 || n === null || n === undefined) return;
+    if (Array.isArray(n)) {
+      n.forEach((v, i) => walk(v, `${p}[${i}]`, d + 1));
       return;
     }
-    if (typeof node === 'object') {
-      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-        if (['correctIndex', 'explanation', 'hints', 'errorTag', 'rationale', 'difficulty', 'reasoningType', 'cognitiveMove', 'verification', 'answerKey'].includes(k)) {
-          leaks.push(`${path}.${k}`);
-        }
-        walk(v, `${path}.${k}`, depth + 1);
+    if (typeof n === 'object') {
+      for (const [k, v] of Object.entries(n as Record<string, unknown>)) {
+        if (LEAK_FIELDS.includes(k)) leaks.push(`${p}.${k}`);
+        walk(v, `${p}.${k}`, d + 1);
       }
     }
   };
-  walk(view, 'view', 0);
+  walk(node, path, depth);
   return leaks;
 }
 
-/** Retained for the build script: a compact preview of the form a given seed produces. */
 export function examFormPreview(bank: Bank, seed: number): Question[] {
   const form = buildExamForm(bank, seed);
   const byId = new Map(bank.questions.map((q) => [q.id, q]));
   return form.items.map((i) => byId.get(i.questionId)).filter((q): q is Question => !!q);
 }
 
-/* ------------------------------------------------------------------ session */
-
-export type UnansweredPolicy = 'incorrect';
+/* ------------------------------------------------------------------ sitting */
 
 export interface ExamSession {
   formId: string;
   startedAtMs: number;
   answers: (number | null)[];
   flagged: boolean[];
-  /** Accumulated time per item in milliseconds. */
+  /** Time spent per item, accumulated on navigation (the clock never stops). */
   spentMs: number[];
   openIndex: number;
-  /** Wall-clock moment the currently open item was entered. */
   openSinceMs: number;
   submittedAtMs: number | null;
 }
@@ -662,7 +583,7 @@ export function isExpired(session: ExamSession, form: ExamForm, nowMs: number): 
   return remainingMs(session, form, nowMs) <= 0;
 }
 
-/** Move to an item, charging the elapsed time to the item that was open. */
+/** Navigate; the time spent on the previously open item is booked first. */
 export function openItem(session: ExamSession, index: number, nowMs: number): ExamSession {
   if (index < 0 || index >= session.answers.length) return session;
   const spent = [...session.spentMs];
@@ -672,7 +593,7 @@ export function openItem(session: ExamSession, index: number, nowMs: number): Ex
   return { ...session, spentMs: spent, openIndex: index, openSinceMs: nowMs };
 }
 
-export function selectOption(session: ExamSession, index: number, optionIndex: number | null): ExamSession {
+export function selectOption(session: ExamSession, index: number, optionIndex: number): ExamSession {
   if (session.submittedAtMs !== null || index < 0 || index >= session.answers.length) return session;
   const answers = [...session.answers];
   answers[index] = optionIndex;
@@ -694,22 +615,31 @@ export function flaggedIndices(session: ExamSession): number[] {
   return session.flagged.map((f, i) => (f ? i : -1)).filter((i) => i >= 0);
 }
 
-/* ------------------------------------------------------------------ result */
+/* ------------------------------------------------------------------ marking & diagnosis */
 
-export interface ExamReviewItem {
+export interface ExamWeakArea {
+  domainId: string;
+  title: string;
+  correct: number;
+  attempted: number;
+  accuracy: number;
+}
+
+export interface ExamReviewRow {
   index: number;
   questionId: string;
   chosen: number | null;
   correctIndex: number;
   correct: boolean;
-  errorTag: string | null;
-  cause: string | null;
+  errorTag: ErrorTag | null;
+  /** Error mechanism, or "unanswered" when nothing was chosen. */
+  cause: ErrorTag | 'unanswered' | null;
   domainId: string;
   conceptTitles: string[];
   difficulty: Difficulty;
   reasoningType: ReasoningType;
   spentMs: number;
-  /** Post-exam only. The student view never carries this. */
+  /** Post-exam review only — never present during the sitting. */
   explanation: Question['explanation'] | null;
 }
 
@@ -721,9 +651,9 @@ export interface ExamResult {
   correct: number;
   wrong: number;
   unanswered: number;
-  /** Share of *answered* items that were correct. */
+  /** Correct ÷ answered. */
   accuracy: number;
-  /** Share of all items that were correct — the number the exam reports. */
+  /** Correct ÷ total. */
   overallAccuracy: number;
   timeUsedMs: number;
   timeAllowedMs: number;
@@ -735,19 +665,21 @@ export interface ExamResult {
   byMove: Slice[];
   byStyle: Slice[];
   errorProfile: ErrorProfileEntry[];
-  weakAreas: { domainId: string; title: string; correct: number; attempted: number; accuracy: number }[];
-  weakConcepts: ConceptStat[];
+  weakAreas: ExamWeakArea[];
+  weakConcepts: ReturnType<typeof conceptStats>;
   diagnosis: Diagnosis;
-  review: ExamReviewItem[];
-  unansweredPolicy: UnansweredPolicy;
+  review: ExamReviewRow[];
+  unansweredPolicy: 'incorrect';
   reportingNote: string;
 }
 
 const REPORTING_NOTE =
-  'Score reporting for the dMAT is published inconsistently (raw score, scaled 0–200 per module, ' +
-  'or percentile). This simulation therefore reports raw marks (correct / total) and a diagnostic ' +
-  'breakdown, and deliberately does not invent a scaled score.';
+  'Score reporting for the dMAT is published inconsistently (raw score, scaled 0–200 per module, or percentile). This simulation therefore reports raw marks (correct / total) and a diagnostic breakdown, and deliberately does not invent a scaled score.';
 
+/**
+ * Mark a sitting. `nowMs` is clamped to the allowed time so that leaving the tab open overnight
+ * cannot produce a 12-hour "time used" figure, and the current item's open interval is booked.
+ */
 export function submit(session: ExamSession, form: ExamForm, bank: Bank, nowMs: number): { session: ExamSession; result: ExamResult } {
   const submittedAtMs = Math.min(nowMs, session.startedAtMs + timeAllowedMs(form));
   const spent = [...session.spentMs];
@@ -758,7 +690,7 @@ export function submit(session: ExamSession, form: ExamForm, bank: Bank, nowMs: 
   const evidence: AttemptEvidence[] = form.items.map((item, i) => {
     const q = byId.get(item.questionId);
     if (q) return evidenceFromAttempt(q, closed.answers[i], closed.spentMs[i], 'exam');
-    // The bank is authoritative; a missing question still has to be scored (form item carries the key).
+    // The bank changed under a stored form: fall back to the item's own data rather than dropping it.
     const correct = closed.answers[i] === item.correctIndex;
     return {
       questionId: item.questionId,
@@ -782,16 +714,15 @@ export function submit(session: ExamSession, form: ExamForm, bank: Bank, nowMs: 
   const timeUsedMs = Math.min(nowMs, submittedAtMs) - session.startedAtMs;
   const times = evidence.map((e) => e.spentMs).filter((t) => t > 0).sort((a, b) => a - b);
   const medianMs = times.length ? times[Math.floor(times.length / 2)] : 0;
-
   const domainTitle = (id: string) => DOMAIN_BY_ID[id]?.title ?? id;
-  const diagnosis = diagnose(evidence);
 
+  const diagnosis = diagnose(evidence);
   const byDomain = sliceBy(evidence, (e) => e.domainId, domainTitle);
-  const weakAreas = byDomain
+  const weakAreas: ExamWeakArea[] = byDomain
     .filter((s) => s.attempted >= 1 && s.accuracy < 0.6)
     .map((s) => ({ domainId: s.key, title: s.label, correct: s.correct, attempted: s.attempted, accuracy: s.accuracy }));
 
-  const review: ExamReviewItem[] = form.items.map((item, i) => {
+  const review: ExamReviewRow[] = form.items.map((item, i) => {
     const e = evidence[i];
     const q = byId.get(item.questionId);
     return {
@@ -801,7 +732,7 @@ export function submit(session: ExamSession, form: ExamForm, bank: Bank, nowMs: 
       correctIndex: item.correctIndex,
       correct: e.correct,
       errorTag: e.errorTag,
-      cause: e.errorTag ? e.errorTag : e.answerIndex === null ? 'unanswered' : null,
+      cause: e.errorTag ?? (e.answerIndex === null ? 'unanswered' : null),
       domainId: item.domainId,
       conceptTitles: item.conceptIds.map((c) => CONCEPT_BY_ID[c]?.title ?? c),
       difficulty: item.difficulty,
@@ -846,17 +777,16 @@ export function submit(session: ExamSession, form: ExamForm, bank: Bank, nowMs: 
   return { session: closed, result };
 }
 
-/* ------------------------------------------------------------------ reporting */
+/* ------------------------------------------------------------------ report */
 
 const pct = (x: number) => `${Math.round(x * 100)} %`;
-const mmss = (ms: number) => `${Math.floor(ms / 60000)}:${String(Math.round((ms % 60000) / 1000)).padStart(2, '0')}`;
+const mmss = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.round((ms % 60_000) / 1000)).padStart(2, '0')}`;
 
 export function formatExamResultMarkdown(result: ExamResult, form?: ExamForm): string {
   const lines: string[] = [];
   lines.push('# Exam result — ' + result.title, '');
   lines.push(
-    `**${result.score} / ${result.total}** correct · accuracy ${pct(result.accuracy)} of answered · ` +
-      `${result.unanswered} unanswered (counted as incorrect) · time used ${mmss(result.timeUsedMs)} of ${mmss(result.timeAllowedMs)}`,
+    `**${result.score} / ${result.total}** correct · accuracy ${pct(result.accuracy)} of answered · ${result.unanswered} unanswered (counted as incorrect) · time used ${mmss(result.timeUsedMs)} of ${mmss(result.timeAllowedMs)}`,
     '',
   );
   lines.push('## Diagnosis', '', `**${result.diagnosis.headline}**`, '');
@@ -914,7 +844,10 @@ export function formatExamResultMarkdown(result: ExamResult, form?: ExamForm): s
   return lines.join('\n');
 }
 
-/** Convenience: does the bank carry enough material to satisfy the blueprint? */
+/**
+ * What the bank cannot currently supply. Shown by the build (and by the UI's teacher view) so that
+ * a thin domain is visible instead of silently under-represented in every sitting.
+ */
 export function blueprintFeasibility(bank: Bank, blueprint: ExamBlueprint = EXAM_BLUEPRINT): string[] {
   const issues: string[] = [];
   for (const [domainId, want] of Object.entries(blueprint.domainTargets)) {
@@ -932,5 +865,5 @@ export function blueprintFeasibility(bank: Bank, blueprint: ExamBlueprint = EXAM
   return issues;
 }
 
-/** Domains that carry officially demonstrated content, in blueprint order. */
-export const OFFICIAL_DOMAIN_IDS = DOMAINS.filter((d) => d.labels.includes('OFFICIAL_SAMPLE')).map((d) => d.id);
+/** Domains whose reasoning is directly demonstrated by an official sample exercise. */
+export const OFFICIAL_DOMAIN_IDS: string[] = DOMAINS.filter((d) => d.labels.includes('OFFICIAL_SAMPLE')).map((d) => d.id);

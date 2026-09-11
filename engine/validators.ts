@@ -1,6 +1,7 @@
 import type { AuditFailure, AuditResult, Question, Stimulus, ValidationStats } from './types';
 import { canonicalNumbers, numbersMatch, solve } from './solvers';
 import { CONCEPT_BY_ID } from './curriculum';
+import { withEvaluation } from './evaluation';
 
 /**
  * INDEPENDENT VALIDATION.
@@ -103,6 +104,12 @@ export function validateQuestion(q: Question, opts: ValidateOptions = {}): Audit
   for (const o of q.options) {
     const low = normaliseText(o.text);
     if (BANNED_PHRASES.some((p) => low.includes(p))) problems.push(`banned option phrasing: ${low.slice(0, 40)}`);
+  }
+
+  /* ---------------- Stage A: evaluation section ---------------- */
+  if (!q.evaluation) problems.push('evaluation section missing');
+  else {
+    if (!q.evaluation.activity || !q.evaluation.skill || !q.evaluation.scene) problems.push('evaluation section incomplete');
   }
 
   /* ---------------- Stage A: registrability ---------------- */
@@ -255,7 +262,7 @@ export function buildAndValidate(input: BuildInput): BuildReport {
   };
 
   for (let i = 0; i < candidates.length; i++) {
-    let q = candidates[i];
+    let q = withEvaluation(candidates[i]);
     let attempt = 0;
     let result = validateQuestion(q);
     let problems = [...result.problems];
@@ -278,7 +285,7 @@ export function buildAndValidate(input: BuildInput): BuildReport {
       retryCount++;
       const fresh = regenerate(q, attempt + i * 1000 + seed);
       if (!fresh) break;
-      q = fresh;
+      q = withEvaluation(fresh);
       result = validateQuestion(q);
       problems = [...result.problems];
     }
@@ -290,7 +297,9 @@ export function buildAndValidate(input: BuildInput): BuildReport {
         duplicateCount++;
         duplicateRejections++;
         rejectionReasons['duplicate item (exact signature)'] = (rejectionReasons['duplicate item (exact signature)'] ?? 0) + 1;
-        rejected.push({ question: q, result: { ...result, problems: ['duplicate of ' + seenSignatures.get(sig)] } });
+        const detail = 'duplicate of ' + seenSignatures.get(sig);
+        rejected.push({ question: q, result: { ...result, problems: [detail] } });
+        failures.push({ id: q.id, domainId: q.domainId, reason: 'duplicate item (exact signature)', detail });
         continue;
       }
       // Near-duplicate: same domain, level and stem shape with the same answer set.
@@ -299,7 +308,9 @@ export function buildAndValidate(input: BuildInput): BuildReport {
       if (variantCount >= TEMPLATE_CAP) {
         templateRepetition++;
         rejectionReasons['template repetition (variant cap reached)'] = (rejectionReasons['template repetition (variant cap reached)'] ?? 0) + 1;
-        rejected.push({ question: q, result: { ...result, problems: ['template repetition: variant cap reached'] } });
+        const detail = `template repetition: ${variantCount + 1}. variant of the same template (cap ${TEMPLATE_CAP}) — kept the first ${TEMPLATE_CAP}`;
+        rejected.push({ question: q, result: { ...result, problems: [detail] } });
+        failures.push({ id: q.id, domainId: q.domainId, reason: 'template repetition (variant cap reached)', detail });
         continue;
       }
       variantCounts.set(variantKey, variantCount + 1);
@@ -383,9 +394,12 @@ export function attachStimuli(stimuli: Stimulus[], questions: Question[], opts: 
     const eligible = blocks
       .filter((b) => b.stimulus.domainIds.includes(q.domainId) && b.ids.length < maxPerStimulus)
       .sort((x, y) => {
+        const conceptHit = (b: typeof x) =>
+          b.stimulus.conceptIds?.length && q.conceptIds.some((c) => b.stimulus.conceptIds!.includes(c)) ? 0 : 1;
         const exact = (b: typeof x) => (b.stimulus.domainIds.length === 1 ? 0 : 1);
         const official = (b: typeof x) => (b.stimulus.officialExercise ? 0 : 1);
         return (
+          conceptHit(x) - conceptHit(y) ||
           exact(x) - exact(y) ||
           official(x) - official(y) ||
           x.ids.length - y.ids.length ||

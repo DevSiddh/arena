@@ -1,5 +1,5 @@
 import type { Rng } from '../rng';
-import type { Question } from '../types';
+import type { ErrorTag, Question } from '../types';
 import { assemble, distinctOpts, num, type GenSpec, type Opt } from './helpers';
 
 /**
@@ -462,15 +462,31 @@ export function genDotProduct(rng: Rng): Question {
 /* 5. angle & perpendicularity                                         */
 /* ------------------------------------------------------------------ */
 export function genAngle(rng: Rng): Question {
-  const style = rng.pick(['arccos_form', 'cos_value', 'perpendicularity'] as const);
+  const style = rng.pick(['cos_value', 'angle_from_cos', 'perpendicularity'] as const);
+
+  /**
+   * Table of integer right triangles, so the cosine of the angle is an exact fraction of integers.
+   * Pythagorean triples are the only way to keep the lengths whole numbers, which is what makes the
+   * answer options readable without a calculator.
+   */
+  const triples: [number[], number[]][] = [
+    [[3, 4], [4, 3]],
+    [[5, 12], [12, 5]],
+    [[8, 15], [15, 8]],
+    [[20, 21], [21, 20]],
+    [[9, 12], [12, 9]],
+  ];
 
   if (style === 'perpendicularity') {
     const a = [rng.int(-5, 5), rng.int(-5, 5)];
+    if (a[0] === 0 && a[1] === 0) return genAngle(rng);
     const k = rng.pick([-2, -1, 1, 2, 3]);
     const perp = [k * a[1], -k * a[0]];
     const notPerp1 = [a[1], a[0]];
     const notPerp2 = [-a[0], -a[1]];
     const notPerp3 = [a[0] + 1, a[1]];
+    const texts = new Set([vecText(perp), vecText(notPerp1), vecText(notPerp2), vecText(notPerp3)]);
+    if (texts.size !== 4) return genAngle(rng); // components coincide for some draws; redraw
     return assemble(
       {
         id: makeId('vperp', rng),
@@ -480,110 +496,130 @@ export function genAngle(rng: Rng): Question {
         stem: `Which of the following vectors is perpendicular to $\\vec{a} = ${vecText(a)}$?`,
         options: [
           { text: vecText(perp), errorTag: 'none', rationale: `Correct: $\\vec{a}\\cdot\\vec{b} = 0$, so the vectors are perpendicular.`, correct: true },
-          { text: vecText(notPerp1), errorTag: 'concept_confusion', rationale: `Swapping the components gives $\\vec{a}\\cdot\\vec{b} = ${a[0] * notPerp1[0] + a[1] * notPerp1[1]} \\neq 0$ — swapped components are generally not perpendicular components.` },
-          { text: vecText(notPerp2), errorTag: 'sign_error', rationale: `This is $-\\vec{a}$, the antiparallel vector: it is parallel, not perpendicular (the angle is 180°).` },
+          { text: vecText(notPerp1), errorTag: 'concept_confusion', rationale: `Swapping the components gives $\\vec{a}\\cdot\\vec{b} = ${a[0] * notPerp1[0] + a[1] * notPerp1[1]} \\neq 0$ — a swap is a reflection, not a 90° rotation.` },
+          { text: vecText(notPerp2), errorTag: 'sign_error', rationale: `This is $-\\vec{a}$, the antiparallel vector: the angle is 180°, not 90°.` },
           { text: vecText(notPerp3), errorTag: 'rule_misapplication', rationale: `Adding 1 to a component does not create a right angle: $\\vec{a}\\cdot\\vec{b} = ${a[0] * notPerp3[0] + a[1] * notPerp3[1]} \\neq 0$.` },
         ],
         difficulty: 3,
         reasoningType: 'conceptual_discrimination',
         cognitiveMove: 'classify_situation',
-        style: 'numeric_direct',
-        hints: ['Perpendicular means the scalar product is zero.', 'Try swapping the components and changing one sign — and check with the dot product.'],
+        style: 'statement_compare',
+        hints: ['Perpendicular means the scalar product is zero.', 'A 90° rotation turns $(x, y)$ into $(-y, x)$ (or $(y, -x)$) — that is not the same as swapping the components.'],
         explanation: {
           testing: 'Using the scalar product as a perpendicularity test rather than computing an explicit angle.',
-          matters: 'Both components of the candidate vector; only their products with the components of $\\vec{a}$ matter.',
+          matters: 'Both components of each candidate vector; only their products with the components of $\\vec{a}$ matter.',
           concept: 'Perpendicularity ⇔ scalar product zero.',
           why: '$\\vec{a}\\cdot\\vec{b} = |\\vec{a}||\\vec{b}|\\cos\\varphi$ vanishes exactly when $\\cos\\varphi = 0$, i.e. $\\varphi = 90°$ (for non-zero vectors).',
           steps: [
-            `Candidate 1: $${a[0]}\\cdot${perp[0]} + ${a[1]}\\cdot${perp[1]} = 0$ ⇒ perpendicular`,
-            `The other candidates give non-zero scalar products, so none of them is perpendicular.`,
+            `Rotate by 90°: $(x, y) \\to (-y, x) = ${vecText(perp)}$`,
+            `Check: $${a[0]}\\cdot${perp[0]} + ${a[1]}\\cdot${perp[1]} = 0$ ⇒ perpendicular`,
+            'The other candidates give non-zero scalar products, so none of them is perpendicular.',
           ],
-          trap: 'Rotating by 90° is not the same as swapping components — a swap is a reflection, which generally keeps the angle acute.',
-          transfer: 'The same test decides whether two forces are independent, whether a displacement is perpendicular to a force (no work done), and whether vectors span a plane.',
+          trap: 'Swapping the components instead of rotating: $(x, y) \\to (y, x)$ is a reflection, which generally keeps the angle acute.',
+          transfer: 'The same test decides whether two forces are independent, whether a displacement is perpendicular to a force (no work done) and whether vectors span a plane.',
         },
       },
       rng,
     );
   }
 
-  // equal-magnitude pairs keep the cosine a clean fraction, as in the official sample
-  const pairs: { a: number[]; b: number[] }[] = [
-    { a: [1, 2], b: [2, 1] },
-    { a: [2, 3], b: [3, 2] },
-    { a: [3, 1], b: [1, 3] },
-    { a: [1, 2, 2], b: [2, 1, 2] },
-    { a: [2, 2, 1], b: [2, 1, 2] },
-    { a: [3, 4], b: [4, 3] },
-  ];
-  const base = rng.pick(pairs);
-  const sa = randSign(rng, base.a);
-  const sb = rng.chance(0.5) ? randSign(rng, base.b) : base.b.slice();
-  const dot = sa.reduce((s, x, i) => s + x * sb[i], 0);
-  const na = Math.sqrt(sa.reduce((s, x) => s + x * x, 0));
-  const nb = Math.sqrt(sb.reduce((s, x) => s + x * x, 0));
-  const cos = dot / (na * nb);
+  const [baseA, baseB] = rng.pick(triples);
+  const sign = rng.pick([1, -1]);
+  const a = [baseA[0], baseA[1]];
+  const b = [baseB[0] * sign, baseB[1]]; // one sign flip changes the cosine without ugly numbers
+  const dot = a[0] * b[0] + a[1] * b[1];
+  const na = Math.sqrt(a[0] * a[0] + a[1] * a[1]);
+  const nb = Math.sqrt(b[0] * b[0] + b[1] * b[1]);
   const den = na * nb;
-  const cosFrac = `${num(dot, 4)}/${num(den, 4)}`;
-  const magProd = na * nb;
-  const stem =
-    `With the scalar product, the angle between two vectors can be determined. ` +
-    `What angle $\\varphi$ is formed by $\\vec{a} = ${vecText(sa)}$ and $\\vec{b} = ${vecText(sb)}$? ` +
-    `(arccosine is the inverse function of the cosine.)`;
-  const wrongA: Opt = {
-    text: `$\\varphi = \\arccos\\left(${num(dot, 4)}/${num(na, 4)}\\right)$`,
-    errorTag: 'rule_misapplication',
-    rationale: 'The denominator uses only one of the two lengths; the formula divides by the product of both lengths.',
-  };
-  const options: Opt[] = [
-    wrongA,
-    {
-      text: `$\\varphi = \\arccos\\left(${num(magProd, 4)}/${num(dot, 4)}\\right)$`,
-      errorTag: 'ratio_error',
-      rationale: 'The fraction is inverted: the cosine is the scalar product divided by the product of the lengths, not the other way round.',
-    },
-    {
-      text: `$\\varphi = \\arccos(${num(sa[0] * sb[0] + sa[0] * sb[1], 4)})$`,
-      errorTag: 'component_confusion',
-      rationale: 'The scalar product was formed with mismatched components, which is a different number.',
-    },
-    { text: `$\\varphi = \\arccos(${cosFrac})$`, errorTag: 'none', rationale: 'Correct: $\\cos\\varphi = \\frac{\\vec{a}\\cdot\\vec{b}}{|\\vec{a}||\\vec{b}|}$.', correct: true },
+  const cosValue = dot / den;
+  if (Math.abs(den - Math.round(den)) > 1e-9) return genAngle(rng);
+  const D = Math.round(den);
+
+  if (style === 'angle_from_cos') {
+    const round = (x: number) => Math.round(x * 10) / 10;
+    const angle = (Math.acos(Math.max(-1, Math.min(1, cosValue))) * 180) / Math.PI;
+    const candidates: { text: string; tag: ErrorTag; why: string }[] = [
+      { text: `about ${round(angle)}°`, tag: 'none', why: 'Correct: the angle whose cosine is the given value.' },
+      { text: `about ${round(90 - angle)}°`, tag: 'concept_confusion', why: 'This is the complement of the angle (the sine relation), not the angle whose cosine was given.' },
+      { text: `about ${round(180 - angle)}°`, tag: 'rule_misapplication', why: 'This is the supplementary angle; it has the same sine but the opposite cosine.' },
+      { text: `about ${round(cosValue * 100)}°`, tag: 'concept_confusion', why: 'The cosine value was read as if it were the angle in degrees; a cosine is a ratio between −1 and 1.' },
+    ];
+    const values = candidates.map((c) => c.text);
+    if (new Set(values).size !== 4 || Math.abs(angle - 45) < 1) return genAngle(rng);
+    return assemble(
+      {
+        id: makeId('vangle', rng),
+        domainId: 'D02',
+        conceptIds: ['C02.angle', 'C02.dot'],
+        label: 'OFFICIAL_SAMPLE',
+        stem: `For two vectors $\\vec{a}$ and $\\vec{b}$ the cosine of the enclosed angle is $\\cos\\varphi = ${num(dot, 4)}/${D}$. What is the angle $\\varphi$ (to the nearest degree)?`,
+        options: candidates.map((c, i) => ({ text: c.text, errorTag: c.tag, rationale: c.why, correct: i === 0 })),
+        difficulty: 3,
+        reasoningType: 'multi_step_application',
+        cognitiveMove: 'interpret_representation',
+        style: 'numeric_direct',
+        hints: ['$\\varphi = \\arccos(\\cos\\varphi)$ — the inverse function turns the ratio back into an angle.', 'A cosine of about 0.96 belongs to a small angle, not to 96°.'],
+        explanation: {
+          testing: 'Turning a cosine value into an angle and recognising the plausible wrong angles.',
+          matters: `The cosine value $${num(dot, 4)}/${D} \\approx ${num(cosValue, 4)}$.`,
+          concept: 'The cosine is a ratio between −1 and 1; the angle follows from the inverse function $\\arccos$.',
+          why: 'The scalar product gives the cosine directly, so the angle is recovered by the inverse cosine, not by reading the ratio as an angle.',
+          steps: [`$\\cos\\varphi = ${num(cosValue, 4)}$`, `$\\varphi = \\arccos(${num(cosValue, 4)}) \\approx ${round(angle)}°$`],
+          trap: 'Reporting the cosine itself as the angle, or using the complement or supplement by mistake.',
+          transfer: 'The same conversion is needed whenever a scalar product is used to find a direction — in statics, in work calculations and in machine-learning similarity measures.',
+        },
+      },
+      rng,
+    );
+  }
+
+  // style === 'cos_value': ask for the cosine itself, with distractors that are other wrong ratios
+  const firstTerm = a[0] * b[0];
+  const secondTerm = a[1] * b[1];
+  const alternatives: { n: number; tag: ErrorTag; why: string }[] = [
+    { n: firstTerm, tag: 'component_confusion', why: `Only the first product was used ($${a[0]} \\cdot ${b[0]}$); the scalar product sums both products.` },
+    { n: firstTerm - secondTerm, tag: 'sign_error', why: 'The two products were subtracted; the scalar product adds them.' },
+    { n: a[0] + a[1] + b[0] + b[1], tag: 'rule_misapplication', why: 'The components were added instead of the products of corresponding components.' },
   ];
-  const spec: GenSpec = {
-    id: makeId('vangle', rng),
-    domainId: 'D02',
-    conceptIds: ['C02.angle'],
-    label: 'OFFICIAL_SAMPLE',
-    stem,
-    options,
-    difficulty: 3,
-    reasoningType: 'multi_step_application',
-    cognitiveMove: 'execute_rule',
-    style: style === 'cos_value' ? 'statement_compare' : 'numeric_direct',
-    hints: [
-      'Start from $\\vec{a}\\cdot\\vec{b} = |\\vec{a}|\\,|\\vec{b}|\\cos\\varphi$ and solve for $\\cos\\varphi$.',
-      'Both lengths are needed in the denominator — they are harmless here because the vectors have equal length.',
-    ],
-    explanation: {
-      testing: 'Rearranging the geometric form of the scalar product to obtain an angle, and keeping the answer in exact arccos form.',
-      matters: `The scalar product (${dot}) and both lengths (${num(na, 4)} and ${num(nb, 4)}).`,
-      concept: 'Angle between two vectors, obtained from the scalar product and both lengths.',
-      why: 'The scalar product mixes length and direction; dividing out both lengths leaves exactly the cosine of the enclosed angle.',
-      steps: [
-        `$\\vec{a}\\cdot\\vec{b} = ${sa.map((x, i) => `(${x})(${sb[i]})`).join(' + ')} = ${dot}$`,
-        `$|\\vec{a}| = ${num(na, 4)}$, $|\\vec{b}| = ${num(nb, 4)}$, product $= ${num(magProd, 4)}$`,
-        `$\\cos\\varphi = ${num(dot, 4)}/${num(magProd, 4)} = ${num(cos, 6)}$ ⇒ $\\varphi = \\arccos(${cosFrac})$`,
+  const chosen = alternatives.filter(
+    (alt, i) =>
+      ![dot, ...alternatives.slice(0, i).map((x) => x.n)].some((x) => Math.abs(x - alt.n) < 1e-9),
+  );
+  if (chosen.length < 3) return genAngle(rng);
+  return assemble(
+    {
+      id: makeId('vangle', rng),
+      domainId: 'D02',
+      conceptIds: ['C02.angle', 'C02.dot'],
+      label: 'OFFICIAL_SAMPLE',
+      stem: `With the scalar product, the angle between two vectors can be determined. What is $\\cos\\varphi$ for $\\vec{a} = ${vecText(a)}$ and $\\vec{b} = ${vecText(b)}$?`,
+      options: [
+        { text: `$\\cos\\varphi = ${num(dot, 4)}/${D}$`, errorTag: 'none', rationale: 'Correct: the cosine is the scalar product divided by the product of the two lengths.', correct: true },
+        ...chosen.map((c) => ({ text: `$\\cos\\varphi = ${num(c.n, 4)}/${D}$`, errorTag: c.tag, rationale: c.why })),
       ],
-      trap: 'Dividing by only one length, or inverting the fraction — both produce plausible-looking arccos expressions.',
-      transfer: 'The same rearrangement answers questions about perpendicularity (cos = 0), acute vs. obtuse angles (sign of cos) and the work done by a force at an angle.',
+      difficulty: 3,
+      reasoningType: 'multi_step_application',
+      cognitiveMove: 'execute_rule',
+      style: 'numeric_direct',
+      hints: ['$\\cos\\varphi = \\dfrac{\\vec{a}\\cdot\\vec{b}}{|\\vec{a}|\\,|\\vec{b}|}$', `Here $|\\vec{a}| = ${num(na, 4)}$ and $|\\vec{b}| = ${num(nb, 4)}$.`],
+      explanation: {
+        testing: 'Assembling the cosine formula: scalar product, both lengths, and the order of the operations.',
+        matters: 'Both vectors completely — every component contributes to the scalar product and to the length.',
+        concept: 'Cosine of the enclosed angle: $\\cos\\varphi = \\dfrac{\\vec{a}\\cdot\\vec{b}}{|\\vec{a}||\\vec{b}|}$.',
+        why: 'The scalar product measures the alignment of the two vectors, and dividing by both lengths removes the influence of their sizes so that only the angle remains.',
+        steps: [
+          `$\\vec{a}\\cdot\\vec{b} = ${a[0]}\\cdot${b[0]} + ${a[1]}\\cdot${b[1]} = ${dot}$`,
+          `$|\\vec{a}| = ${num(na, 4)}$, $|\\vec{b}| = ${num(nb, 4)}$, product $= ${D}$`,
+          `$\\cos\\varphi = ${num(dot, 4)}/${D} \\approx ${num(cosValue, 4)}$`,
+        ],
+        trap: 'Forgetting one of the two lengths, subtracting the component products, or inverting the fraction.',
+        transfer: 'The same formula decides whether two forces act in the same direction, whether a projection is large, and how similar two data vectors are.',
+      },
     },
-    verification: { solver: 'vector.angle', payload: { a: sa, b: sb } },
-  };
-  return assemble(spec, rng);
+    rng,
+  );
 }
 
-/* ------------------------------------------------------------------ */
-/* 6. cross product                                                    */
-/* ------------------------------------------------------------------ */
 export function genCrossProduct(rng: Rng): Question {
   const a = [rng.int(-4, 4), rng.int(-4, 4), rng.int(-4, 4)];
   const b = [rng.int(-4, 4), rng.int(-4, 4), rng.int(-4, 4)];
@@ -1060,6 +1096,93 @@ export function genVectorEffect(rng: Rng): Question {
 /* ------------------------------------------------------------------ */
 /* 10. result-type item (official question type)                       */
 /* ------------------------------------------------------------------ */
+/**
+ * Coordinates and components (C02.coords) — the reading-off skill the rest of the vector domain
+ * assumes: a described movement on a grid becomes an ordered pair, and a pair is read back as
+ * components along the axes. Kept separate from addition (C02.addsub) because the error mechanisms
+ * are different: here students swap the axes, flip a sign, or add the magnitudes.
+ */
+export function genVectorComponents(rng: Rng): Question {
+  const east = rng.pick([2, 3, 4, 5, 6, 7, 8, 9, 10, 12]);
+  const north = rng.pick([1, 2, 3, 4, 5, 6, 7, 8]);
+  const shape = rng.pick(['describe', 'read'] as const);
+
+  if (shape === 'read') {
+    // The key must be a signed ordered pair: the solver re-derives the components, so an option
+    // written only as words ("4 units east") cannot be checked against it — the validator would
+    // rightly reject such an item as unverifiable.
+    const ax = rng.pick([-6, -5, -4, -3, -2, 2, 3, 4, 5, 6]);
+    const ay = rng.pick([-6, -5, -4, -3, -2, 2, 3, 4, 5, 6]);
+    if (ax > 0 && ay > 0) return genVectorComponents(rng); // keep the "signs dropped" distractor wrong
+    if (Math.abs(ax) === Math.abs(ay)) return genVectorComponents(rng); // keep the swap a different pair
+    const pairText = (pair: number[]) => `$(${pair[0]},\\ ${pair[1]})$`;
+    return assemble(
+      {
+        id: makeId('vcomp-read', rng),
+        domainId: 'D02',
+        conceptIds: ['C02.coords'],
+        label: 'PREREQUISITE',
+        stem: `A point $P$ has the coordinates $P(${ax}, ${ay})$ in a Cartesian system whose $x$-axis points east and whose $y$-axis points north. Which ordered pair gives the components of the position vector $\\overrightarrow{OP}$ (first component east–west, second component north–south)?`,
+        options: [
+          { text: pairText([ax, ay]), errorTag: 'none', rationale: 'Correct: the coordinates of the point *are* the components of its position vector, signs included.', correct: true },
+          { text: pairText([ay, ax]), errorTag: 'component_confusion', rationale: 'The two components were swapped; the first entry belongs to the east–west axis.' },
+          { text: pairText([Math.abs(ax), Math.abs(ay)]), errorTag: 'sign_error', rationale: 'A sign was dropped, so the direction information is lost — the pair no longer points at $P$.' },
+          { text: pairText([ax + ay, ax + ay]), errorTag: 'concept_confusion', rationale: 'The two coordinates were added together and put into both slots; components are not sums of each other.' },
+        ],
+        difficulty: 1,
+        reasoningType: 'recall_structure',
+        cognitiveMove: 'interpret_representation',
+        style: 'description_choice',
+        hints: ['A position vector points from the origin to the point, so its components are the coordinates.', 'A negative coordinate means the component points west or south.'],
+        explanation: {
+          testing: 'Reading a point as a position vector, signs included.',
+          matters: `The pair (${ax}, ${ay}) and the orientation of the axes.`,
+          concept: 'The components of $\\overrightarrow{OP}$ are the coordinates of $P$.',
+          why: `Travelling from the origin to $P$ means moving ${ax} along the $x$-axis and ${ay} along the $y$-axis; those two moves are exactly the components.`,
+          steps: [`$x$-component: $${ax}$ (${ax < 0 ? 'west' : 'east'})`, `$y$-component: $${ay}$ (${ay < 0 ? 'south' : 'north'})`, `$\\overrightarrow{OP} = (${ax},\\ ${ay})$`],
+          trap: 'Swapping the axes or dropping a sign — both change the vector, not just its description.',
+          transfer: 'Every later calculation keeps the two components separate and signed; this is the reading step of the whole vector domain.',
+        },
+        verification: { solver: 'vector.components', payload: { a: [ax, ay] } },
+      },
+      rng,
+    );
+  }
+
+  return assemble(
+    {
+      id: makeId('vcomp', rng),
+      domainId: 'D02',
+      conceptIds: ['C02.coords'],
+      label: 'PREREQUISITE',
+      stem: `A surveyor walks ${east} km east and then ${north} km north. Which ordered pair gives the components of the displacement from the starting point, in km (first component east, second component north)?`,
+      figure: { kind: 'vector_grid', vectors: [{ label: 'east', to: [east, 0] }, { label: 'north', to: [0, north] }] },
+      options: [
+        { text: `$(${east},\\ ${north})$`, errorTag: 'none', rationale: 'Correct: the eastward leg is the first component and the northward leg the second.', correct: true },
+        { text: `$(${north},\\ ${east})$`, errorTag: 'component_confusion', rationale: 'The components were swapped; the first entry belongs to the east–west axis.', correct: false },
+        { text: `$(${east + north},\\ ${east + north})$`, errorTag: 'concept_confusion', rationale: 'The path length was added up and entered in both slots; components are not path lengths.' },
+        { text: `$(${east},\\ ${-north})$`, errorTag: 'sign_error', rationale: 'Walking north increases the second component; the negative sign points south.' },
+      ],
+      difficulty: 1,
+      reasoningType: 'recall_structure',
+      cognitiveMove: 'execute_rule',
+      style: 'numeric_direct',
+      hints: ['Read the pair in the order the question fixes: (east, north).', 'The two legs do not need Pythagoras — that would give the length, not the components.'],
+      explanation: {
+        testing: 'Writing a two-leg journey as a component pair.',
+        matters: `The eastward leg (${east} km) and the northward leg (${north} km).`,
+        concept: 'Components of a displacement are the separate movements along each axis.',
+        why: 'Kinematically, a displacement along an axis is unaffected by movement along the perpendicular axis, so the two legs are independent components.',
+        steps: [`east–west component: $+${east}$ km`, `north–south component: $+${north}$ km`, `displacement vector: $\\vec{d} = (${east},\\ ${north})$ km`],
+        trap: 'Adding the legs together, swapping the order, or computing the straight-line length when the components were asked for.',
+        transfer: 'The same decomposition turns any description in words — wind, forces, current — into a vector that can be computed with.',
+      },
+      verification: { solver: 'vector.components', payload: { a: [east, north] } },
+    },
+    rng,
+  );
+}
+
 export function genResultType(rng: Rng): Question {
   const asked = rng.pick(['dot', 'cross', 'triple', 'all'] as const);
   if (asked === 'all') {

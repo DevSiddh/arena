@@ -1,331 +1,434 @@
+/**
+ * Level 6–7 items: "exam-style" and "advanced transfer".
+ *
+ * These are deliberately harder than the official samples. The official material says its samples
+ * are "only a selection" and do not necessarily reflect the difficulty of the real test, so the
+ * mastery ladder needs items above the sample tier — items that combine two relations, that
+ * describe a situation instead of stating a formula, or that require a model judgement rather
+ * than a computation.
+ */
+
 import { Q } from './helpers';
 import type { Question } from '../types';
 import type { AuthoredOption, AuthoredSpec } from './helpers';
 
-/**
- * Level 6–7 items ("exam-style" and "advanced transfer").
- *
- * These are deliberately harder than the official samples — the official material warns that
- * the samples "do not necessarily reflect the difficulty level of the questions on the actual
- * test", so mastery work needs items above the sample tier. Each one requires combining at
- * least two concepts, interpreting a described situation rather than a stated formula, or
- * deciding which of several plausible methods applies.
- */
+const o = (text: string, errorTag: AuthoredOption['errorTag'], why: string): AuthoredOption => ({ text, errorTag, why });
 
-interface Spec {
-  id: string;
-  domainId: string;
-  conceptIds: string[];
-  stem: string;
-  options: AuthoredOption[];
-  correct: number;
-  difficulty: 6 | 7;
-  testing: string;
-  matters: string;
-  irrelevant?: string;
-  concept: string;
-  why: string;
-  steps: string[];
-  trap: string;
-  transfer: string;
-  hints: string[];
-  reasoning: AuthoredSpec['reasoningType'];
-  move: AuthoredSpec['cognitiveMove'];
-  style?: AuthoredSpec['style'];
-  tags?: string[];
-}
-
-function A(s: Spec): Question {
-  return Q({
-    id: s.id,
-    domainId: s.domainId,
-    conceptIds: s.conceptIds,
-    label: 'OFFICIAL_SAMPLE',
-    stem: s.stem,
-    options: s.options as AuthoredSpec['options'],
-    correct: s.correct as AuthoredSpec['correct'],
-    difficulty: s.difficulty,
-    reasoningType: s.reasoning,
-    cognitiveMove: s.move,
-    style: s.style ?? 'numeric_direct',
-    hints: s.hints,
-    tags: ['advanced', ...(s.tags ?? [])],
-    explanation: {
-      testing: s.testing,
-      matters: s.matters,
-      irrelevant: s.irrelevant,
-      concept: s.concept,
-      why: s.why,
-      steps: s.steps,
-      distractorWhy: s.options.map((o) => o.why),
-      trap: s.trap,
-      transfer: s.transfer,
-    },
-  });
-}
-
-const o = (text: string, tag: AuthoredOption['errorTag'], why: string): AuthoredOption => ({ text, errorTag: tag, why });
-
-export const ADVANCED_AUTHORED: Question[] = [
-  /* ---------------- D02 — vectors, two concepts combined ---------------- */
-  A({
-    id: 'ad02-01',
+export const ADVANCED: AuthoredSpec[] = [
+  {
+    id: 'adv-vec-01',
     domainId: 'D02',
-    conceptIds: ['C02.dot', 'C02.cross', 'C02.area'],
+    conceptIds: ['C02.area', 'C02.cross', 'C02.angle'],
+    label: 'OFFICIAL_SAMPLE',
     stem:
-      'Three forces act at a point: $\\vec{F}_1 = (2, 1)$, $\\vec{F}_2 = (-1, 3)$ and $\\vec{F}_3 = (1, -4)$ (in newtons). ' +
-      'A student wants to know (i) the resultant force and (ii) the angle between $\\vec{F}_1$ and $\\vec{F}_2$, and then claims that because $\\vec{F}_1 \\cdot \\vec{F}_2 > 0$, the angle must be smaller than 90°. ' +
-      'Which assessment is fully correct?',
+      'Two vectors in the plane are given as $\\vec{a} = (4, 0)$ and $\\vec{b} = (2, 2)$. A student claims: "the area of the parallelogram they span is 8, and the angle between them is 45°." Which assessment is correct?',
     options: [
-      o('The resultant is $(2, 0)$ N and the student’s conclusion about the angle is correct, because a positive scalar product means the angle is acute.', 'none', 'Correct: the components add to $(2+(-1)+1,\\; 1+3-4) = (2, 0)$, and $\\vec{F}_1\\cdot\\vec{F}_2 = 2(-1) + 1(3) = 1 > 0$ forces an acute angle.'),
-      o('The resultant is $(2, 0)$ N, but the angle conclusion is wrong because a positive scalar product only shows that the vectors are not parallel.', 'sufficient_necessary_confusion', 'The sign of the scalar product is exactly the acute/obtuse test; “not parallel” is a different (weaker) statement.'),
-      o('The resultant is $(4, 0)$ N and the angle conclusion is correct.', 'calculation_slip', 'The components were not added correctly: $-1 + 1 = 0$ contributes nothing, and $1 + 3 - 4 = 0$, giving $(2, 0)$ N, not $(4, 0)$ N.'),
-      o('Neither part can be answered because forces must be combined with the vector product.', 'concept_confusion', 'Forces combine by vector addition; the vector product measures a perpendicular effect (torque), not a resultant force.'),
+      o('Both claims are correct.', 'none', 'Correct: $|\\vec{a}\\times\\vec{b}| = |4\\cdot2 - 0\\cdot2| = 8$, and $\\cos\\varphi = \\frac{8}{4\\sqrt{8}} = \\frac{1}{\\sqrt2}$, so $\\varphi = 45°$.'),
+      o('The area is correct, the angle is larger than 45°.', 'calculation_slip', 'The cosine is $\\frac{1}{\\sqrt2} \\approx 0{,}707$, which is exactly 45°, not a larger angle.'),
+      o('The area is 16 and the angle is 45°.', 'concept_confusion', '16 is the area of the rectangle spanned, not of the parallelogram: the parallelogram area is the magnitude of the vector product.'),
+      o('The area is 8 and the angle is 90°, because the vectors are not parallel.', 'rule_misapplication', 'Not being parallel only excludes 0° and 180°; the actual angle comes from the cosine, which is not zero here.'),
     ],
     correct: 0,
     difficulty: 6,
-    testing: 'Multi-concept vector work: component-wise addition, the dot product as an angle test, and judging a student’s reasoning.',
-    matters: 'The three component pairs, and the value of $\\vec{F}_1\\cdot\\vec{F}_2 = 1$.',
-    concept: 'Vector addition for the resultant; the sign of the scalar product classifies the angle.',
-    why: 'Addition is component-wise and independent per axis, while the scalar product combines both vectors into a single number whose sign carries the angle information.',
-    steps: [
-      '$\\vec{F}_1 + \\vec{F}_2 + \\vec{F}_3 = (2 - 1 + 1,\\; 1 + 3 - 4) = (2, 0)$ N',
-      '$\\vec{F}_1\\cdot\\vec{F}_2 = (2)(-1) + (1)(3) = 1 > 0$',
-      'Positive scalar product with non-zero lengths ⇒ $\\cos\\varphi > 0$ ⇒ the angle is acute.',
-    ],
-    trap: 'Treating the resultant magnitude as the sum of the component magnitudes, and confusing “acute angle” with “not parallel”.',
-    transfer: 'The same two-step reading (add components, then test alignment) decides whether two forces reinforce each other or whether two measured indicators move together.',
-    hints: ['Add the vectors first, component by component.', 'Then compute the dot product of the first two and interpret its sign.'],
-    reasoning: 'multi_step_application',
-    move: 'explain_or_critique',
-  }),
-
-  /* ---------------- D06 — hydrostatics, three laws combined ---------------- */
-  A({
-    id: 'ad06-01',
+    reasoningType: 'multi_step_application',
+    cognitiveMove: 'explain_or_critique',
+    style: 'statement_compare',
+    hints: ['Compute the vector product first, then the cosine of the angle.', 'Both quantities can be expressed with the same two products.'],
+    explanation: {
+      testing: 'Combining the vector product (area) with the scalar product (angle) and judging a compound claim.',
+      matters: 'The components of both vectors, and the fact that the area and the angle come from different products.',
+      irrelevant: 'The position of the vectors in the plane: only their components matter, not where they are drawn.',
+      concept: '$|\\vec{a}\\times\\vec{b}|$ is the spanned area; $\\cos\\varphi = \\frac{\\vec{a}\\cdot\\vec{b}}{|\\vec{a}||\\vec{b}|}$ gives the angle.',
+      why: 'Both quantities are determined by the same two products, so a compound claim must be checked twice — a correct area says nothing about the angle.',
+      steps: [
+        '$\\vec{a}\\times\\vec{b} = 4\\cdot2 - 0\\cdot2 = 8$ in the plane, so the area is $|8| = 8$.',
+        '$\\vec{a}\\cdot\\vec{b} = 4\\cdot2 + 0\\cdot2 = 8$; $|\\vec{a}| = 4$, $|\\vec{b}| = \\sqrt{8} = 2\\sqrt2$.',
+        '$\\cos\\varphi = \\frac{8}{4\\cdot2\\sqrt2} = \\frac{1}{\\sqrt2} \\Rightarrow \\varphi = 45°$.',
+        'Both parts of the claim hold.',
+      ],
+      distractorWhy: [
+        'Correct — the reasoning in the option matches the computation.',
+        'The cosine value was misread; $1/\\sqrt2$ is 45°, not larger.',
+        'Confusing the rectangle area (16) with the parallelogram area (8).',
+        'Non-parallel does not mean perpendicular; the perpendicular case requires a zero scalar product, which is not the case here.',
+      ],
+      trap: 'Checking only the first part of a compound claim, or believing that a non-zero angle is automatically 90°.',
+      transfer: 'Every "is this statement correct?" item should be split into its parts and each part verified separately — the exam uses compound claims precisely because they punish partial checking.',
+    },
+    tags: ['advanced'],
+  },
+  {
+    id: 'adv-hyd-01',
     domainId: 'D06',
-    conceptIds: ['C06.depth', 'C06.trapped', 'C06.buoy', 'C05.gas'],
+    conceptIds: ['C06.buoy', 'C06.displaced', 'C06.stability'],
+    label: 'OFFICIAL_SAMPLE',
     stem:
-      'An open-bottomed container floats in a sealed water tank with an air pocket of height 1.0 m inside it. The water surface in the tank is at atmospheric pressure. ' +
-      'The container has a constant cross-section and the tank is now closed and pressurised with an additional 1 bar above the water surface. ' +
-      'Which statement describes the result?',
+      'Two identical cargo boxes of 12 t each float in the same water. Box A is narrow and tall, box B is wide and flat. Which statement about floating and stability is correct?',
     options: [
-      o('The air pocket shrinks to about half its height and the container sinks, because the displaced water volume falls.', 'none', 'Correct: doubling the absolute pressure halves the trapped air volume, which reduces the displaced volume and therefore buoyancy.'),
-      o('The air pocket shrinks, but the container rises because the pressurised water pushes upwards more strongly.', 'wrong_assumption', 'Pressure acts in all directions; the net effect on the container is decided by the *displaced volume*, which has become smaller.'),
-      o('The air pocket keeps its size because the additional pressure acts equally inside and outside the container.', 'concept_confusion', 'The additional pressure is applied to the water, so the water presses harder on the trapped air; the pressure inside does not rise automatically.'),
-      o('The container sinks without any change in the air pocket, because the water density increases.', 'wrong_assumption', 'Water is modelled as incompressible here, so its density does not change; the decisive change is the compression of the gas.'),
+      o('Both boxes displace the same mass of water, but B resists tilting more strongly.', 'none', 'Correct: the displaced mass equals the body mass in both cases (12 t), and the wider hull moves its displaced water sideways faster when it tilts.'),
+      o('B displaces more water because it has a larger surface area in contact with the water.', 'concept_confusion', 'Contact area does not enter the floating condition; only the displaced *mass* matters, and it is fixed by the weight.'),
+      o('A is more stable because its centre of gravity is higher, giving the water more leverage.', 'causal_direction_reversed', 'A higher centre of gravity makes a body *less* stable: the restoring effect depends on how far the displaced water moves sideways, not on height.'),
+      o('Both displace the same mass, and both resist tilting equally because the mass is identical.', 'wrong_assumption', 'Equal mass means equal displaced mass, but stability depends on the hull shape — the same weight in a wider hull is more stable.'),
     ],
     correct: 0,
-    difficulty: 7,
-    testing: 'Combining the pressure law, isothermal gas compression and buoyancy in one scenario — the cross-concept demand of the hardest official items.',
-    matters: 'The absolute pressure before (1 bar) and after (2 bar) pressurisation, and the fact that buoyancy follows the displaced volume.',
-    irrelevant: 'The absolute depth of the container: the change is caused by the *additional* pressure, and the ratio of absolute pressures is what compresses the gas.',
-    concept: 'p·V = constant for the trapped gas; buoyancy = weight of the displaced water.',
-    why: 'Doubling the absolute pressure halves the gas volume; a smaller gas pocket means less displaced water, so the buoyant force drops below the weight and the container sinks until it reaches a new equilibrium.',
-    steps: [
-      'Absolute pressure before: ≈ 1 bar (atmosphere).',
-      'After pressurisation: ≈ 2 bar ⇒ the trapped air volume halves, so the pocket height falls to about 0.5 m.',
-      'Displaced water volume falls accordingly ⇒ buoyant force falls ⇒ the container sinks.',
-    ],
-    trap: 'Explaining the change through the water density (incompressible) or assuming the pocket keeps its size because “pressure acts everywhere”.',
-    transfer: 'This is the reasoning behind ballast systems, Cartesian divers and why a closed diving bell cannot be raised by simply pumping water in.',
-    hints: ['Compare absolute pressures, not gauge pressures.', 'Which volume can actually change — and what does buoyancy depend on?'],
-    reasoning: 'multi_step_application',
-    move: 'explain_or_critique',
-  }),
-
-  /* ---------------- D09 — EOQ with a discount decision ---------------- */
-  A({
-    id: 'ad09-01',
+    difficulty: 6,
+    reasoningType: 'conceptual_discrimination',
+    cognitiveMove: 'classify_situation',
+    style: 'statement_compare',
+    hints: ['Start with the floating condition: what must equal the body weight?', 'Then ask which geometric quantity decides the restoring effect.'],
+    explanation: {
+      testing: 'Separating the floating condition (mass) from the stability condition (geometry).',
+      matters: 'The equal masses (12 t each) and the different hull widths.',
+      irrelevant: 'The absolute size of the boxes: only the shape difference matters for the comparison.',
+      concept: 'Floating: displaced mass = body mass. Stability: the restoring moment grows with a wider hull.',
+      why: 'Buoyancy is an equilibrium statement about weight; stability is a statement about geometry. A single body can satisfy the first and still be tender in the second.',
+      steps: [
+        'Floating condition: each box displaces 12 t of water, regardless of shape.',
+        'A tilting hull moves its displaced water sideways; the wider the beam, the further it moves.',
+        'A larger sideways shift produces a larger restoring moment, so B is the more stable of the two.',
+        'Both statements are therefore correct together.',
+      ],
+      distractorWhy: [
+        'Correct — the reasoning in the option matches the computation.',
+        'Contact area is irrelevant to buoyancy; the displaced mass is fixed by the weight.',
+        'A higher centre of gravity reduces stability — the reason is reversed.',
+        'Stability is a geometric property, not a consequence of equal mass.',
+      ],
+      trap: 'Assuming equal weight implies equal behaviour in the water — which is true for floating, false for stability.',
+      transfer: 'The same distinction decides why a wide ferry is comfortable and a narrow canoe is not, at equal displacement.',
+    },
+    tags: ['advanced'],
+  },
+  {
+    id: 'adv-eoq-01',
     domainId: 'D09',
-    conceptIds: ['C09.qstar', 'C09.cost', 'C09.sensitivity'],
+    conceptIds: ['C09.qstar', 'C09.scaling', 'C09.value'],
+    label: 'OFFICIAL_SAMPLE',
     stem:
-      'A retailer needs $D = 3600$ units per year. Each order costs €50 and holding one unit for a year costs €4. The supplier offers a 2 % discount on the purchase price if orders are at least 600 units. ' +
-      'The model-optimal quantity without the discount is 300 units. Which procedure is correct for deciding whether to order 600 units?',
+      'A supplier offers a 2 % discount on the **purchase price** if orders are placed in larger quantities. The order-quantity model as taught in the official material',
     options: [
-      o('Compare the total annual cost (ordering + holding + purchase price) at 300 units with the same total at 600 units, taking the discount only in the second case.', 'none', 'Correct: the discount changes the objective, so both candidate quantities must be evaluated with their full annual cost including the purchase price.'),
-      o('Order 600 units, because the formula is minimised at the smallest quantity that receives the discount.', 'wrong_assumption', 'The formula minimises ordering and holding costs only; it cannot choose among price regimes.'),
-      o('Order 300 units, because any deviation from $Q^*$ increases the ordering and holding cost.', 'model_assumption_error', 'It is true that ordering and holding costs rise, but the discount reduces the purchase cost — which may outweigh that increase. Comparing only the two cost terms ignores the discount.'),
-      o('Compare the two quantities using only the purchase price, since ordering and holding costs are identical in both cases.', 'concept_confusion', 'The ordering and holding costs differ substantially between 300 and 600 units: at 600 units the ordering cost halves while the holding cost doubles.'),
+      o('does not contain the purchase price, so the discount cannot change $Q^{*}$ inside the model — the decision must be taken by comparing total costs with and without the discount.', 'none', 'Correct: the model minimises ordering and holding costs only; a price break is a comparison of two regimes, not an input to the formula.'),
+      o('should be re-run with the discounted price in the holding cost and the square root recomputed.', 'model_assumption_error', 'The discount applies to the purchase price per unit, not automatically to the holding cost rate, and substituting it into the formula does not answer whether the larger order is worth it.'),
+      o('shows that larger orders always reduce total cost, so the discount should be taken.', 'overprecision', 'Larger orders reduce *ordering* cost but increase holding cost; total cost rises again beyond $Q^{*}$.'),
+      o('requires replacing $Q^{*}$ by the discount quantity because the demand is constant.', 'wrong_assumption', 'Constant demand does not make the discounted quantity optimal; the two candidate quantities must be compared on total cost.'),
     ],
     correct: 0,
     difficulty: 7,
-    testing: 'Deciding how to handle a situation the standard model excludes, without discarding the model’s cost logic.',
-    matters: 'The full annual cost structure including the purchase price, and the fact that the discount applies only in one regime.',
-    concept: 'Total annual cost = purchase cost + ordering cost + holding cost; a price break creates two regimes that must be compared directly.',
-    why: 'The model’s optimum is defined for a constant unit price. With a price break the decision becomes a comparison of two candidate solutions — the unconstrained optimum and the smallest quantity that earns the discount — evaluated on total cost.',
-    steps: [
-      'Candidate 1: $Q = 300$, no discount. Ordering cost = (3600/300)·50 = €600, holding cost = (300/2)·4 = €600, plus the full purchase price.',
-      'Candidate 2: $Q = 600$, with discount. Ordering cost = (3600/600)·50 = €300, holding cost = (600/2)·4 = €1200, so €300 more in inventory costs than candidate 1.',
-      'The discount is worthwhile if 2 % of the annual purchase value exceeds that €300 gap.',
-    ],
-    trap: 'Applying the square-root formula mechanically, or assuming that the discount always pays for the extra holding cost.',
-    transfer: 'The same structure underlies bulk-buying decisions, subscription tiers and any quantity-dependent pricing.',
-    hints: ['Write down the total annual cost as three components.', 'Evaluate both candidate quantities and compare — the discount is worth it only if it exceeds the extra inventory cost.'],
-    reasoning: 'optimisation_reasoning',
-    move: 'general_case',
-    tags: ['extension', 'multi-concept'],
-  }),
-
-  /* ---------------- D11 — research design, level 6/7 ---------------- */
-  A({
-    id: 'ad11-01',
+    reasoningType: 'optimisation_reasoning',
+    cognitiveMove: 'general_case',
+    style: 'statement_compare',
+    hints: ['What costs does $Q^{*} = \\sqrt{2DS/H}$ actually balance?', 'Where would a discount on the unit price appear in a total-cost statement?'],
+    explanation: {
+      testing: 'Recognising the boundary of a model — what it optimises and what it cannot decide.',
+      matters: 'The model contains ordering cost and holding cost; the purchase price is not in it.',
+      irrelevant: 'The size of the discount (2 %): the principle holds for any discount, the arithmetic decides the case.',
+      concept: 'The model minimises ordering plus holding cost. A price break creates two regimes whose total costs (including purchase cost) must be compared.',
+      why: 'A formula cannot optimise a quantity it does not contain. The correct procedure is to evaluate the total annual cost at the unconstrained optimum and at the smallest quantity that earns the discount, and compare.',
+      steps: [
+        'Total annual cost = purchase cost + ordering cost + holding cost.',
+        'Inside the model, purchase cost is constant, which is why it does not appear in $Q^{*}$.',
+        'With a price break, purchase cost depends on the quantity, so the model no longer covers the decision.',
+        'Compare the two candidate quantities on the full total cost and choose the cheaper one.',
+      ],
+      distractorWhy: [
+        'Correct — the reasoning in the option matches the computation.',
+        'The holding-cost rate is a storage cost, not the purchase price; substituting it in changes the wrong quantity.',
+        'Total cost has a minimum; ordering more always increases the holding term.',
+        'Constant demand is an assumption of the model, not an argument for the discounted quantity.',
+      ],
+      trap: 'Treating the square-root formula as a general answer for every procurement question.',
+      transfer: 'Any optimisation model inherits the boundaries of its cost statement; decisions outside that statement need a direct comparison of alternatives.',
+    },
+    tags: ['advanced', 'multi-concept'],
+  },
+  {
+    id: 'adv-res-01',
     domainId: 'D11',
-    conceptIds: ['C11.linear', 'C11.document', 'C11.mixed', 'C11.general'],
+    conceptIds: ['C11.mixed', 'C11.general', 'C11.document'],
+    label: 'OFFICIAL_SAMPLE',
     stem:
-      'A ministry wants to know whether a new advisory service improves small firms’ survival, and also how firms actually use the advice. ' +
-      'A proposal offers: (1) a survey of 2 000 firms with a matched comparison group, (2) interviews with 20 firms chosen to cover different usage patterns, and (3) a change to the survey questionnaire after wave 1 to capture a service element that was overlooked. ' +
-      'The ministry asks which aspects of the proposal are methodologically sound. Which assessment is correct?',
+      'A study reports: "In our survey of 1 200 employees, satisfaction was higher after the new roster was introduced. We also interviewed 24 employees, who explained why the roster helped them plan their week better. During the survey we added two items about shift length, so we report the results for those items separately for the two halves of the sample." Which methodological assessment is most defensible?',
     options: [
-      o('All three parts are defensible if the questionnaire change is documented and its consequences for comparability are reported.', 'none', 'Correct: the design matches each question to an appropriate method, and a documented, disclosed change is permissible in a quantitative project.'),
-      o('Only (1) and (2) are defensible; changing the questionnaire after wave 1 makes the whole study invalid.', 'overprecision', 'Changes are explicitly permitted; what matters is documentation and the resulting limitation on comparability — not invalidity of the entire study.'),
-      o('Only (1) is defensible; the interviews cannot contribute to the question of how firms use advice.', 'scope_error', 'Interviewing a stratified sample of firms is precisely how usage patterns and mechanisms are investigated.'),
-      o('Only (2) and (3) are defensible; a matched comparison group cannot support conclusions about improvement.', 'concept_confusion', 'A matched comparison group is a standard quasi-experimental device and is designed exactly to support conclusions about improvement.'),
+      o('The design combines a quantitative trend with a qualitative mechanism, and the added items are handled as the material requires — documented, with the comparability consequence reported.', 'none', 'Correct: the mixed design answers both the "whether" and the "why" question, and the change to the instrument is documented and its consequence reported rather than ignored.'),
+      o('The study is invalid because a questionnaire may not be changed once data collection has begun.', 'overprecision', 'The material allows modifications; it warns that they can reduce significance or comparability, which is exactly why the split reporting matters.'),
+      o('The interviews cannot support the mechanism claim because 24 employees are too few to be generalisable.', 'scope_error', 'Mechanism claims from interviews are not frequency claims; their role is explanatory, and the reader judges transferability rather than statistical generalisation.'),
+      o('The survey alone answers the question, so the interviews are unnecessary additional work.', 'irrelevant_data_used', 'The survey shows that satisfaction rose; it does not show *why*, which is the second half of the research question.'),
     ],
     correct: 0,
     difficulty: 7,
-    testing: 'Judging a complete mixed-method proposal against the rules of both traditions at once.',
-    matters: 'Three separate judgements: matching each question to a method, the permissibility of a documented design change, and the comparability consequences of that change.',
-    concept: 'Mixed designs are legitimate; quantitative projects permit documented changes whose consequences are reported.',
-    why: 'Each element serves a different function — survey with comparison for the effect, interviews for usage, and a documented instrument change with disclosed limits — so none of them is invalidating by itself.',
-    steps: [
-      'Match question to method: “does it improve survival” ⇒ survey with comparison; “how do firms use advice” ⇒ interviews.',
-      'Assess the change: permitted, but documentation and disclosure of comparability limits are required.',
-      'Conclude that all three parts can be defended under the stated conditions.',
-    ],
-    trap: 'Reacting to the design change with a blanket rejection instead of assessing documentation and consequences — the exact distinction the official material draws.',
-    transfer: 'This is the judgement applied in reviewing grant proposals, clinical protocol amendments and evaluation tenders.',
-    hints: ['Judge each of the three parts separately before combining them.', 'Which rule does the official material give for modifications in a quantitative project?'],
-    reasoning: 'evidence_evaluation',
-    move: 'general_case',
-  }),
-
-  /* ---------------- D13 — model validity, level 6 ---------------- */
-  A({
-    id: 'ad13-01',
+    reasoningType: 'evidence_evaluation',
+    cognitiveMove: 'general_case',
+    style: 'critique_reasoning',
+    hints: ['Separate the "whether" question from the "why" question before judging the design.', 'Ask what the material says about changing an instrument mid-project.'],
+    explanation: {
+      testing: 'Judging a complete mixed-method design, including the treatment of an instrument change.',
+      matters: 'Two questions (trend and mechanism), two strands (survey and interviews), and the documented change with its reported consequence.',
+      concept: 'Mixed designs answer complementary questions; documented changes are permissible, hidden ones are not.',
+      why: 'Each element of the design maps onto a part of the research question, and the methodological requirement for a change is documentation plus disclosure of the consequence — both present here.',
+      steps: [
+        'Split the question: does satisfaction differ (quantitative) and why (qualitative).',
+        'Match the strands: survey with trend, interviews with mechanism.',
+        'Assess the instrument change: documented and its comparability consequence reported for the two halves.',
+        'Conclude that all parts are defensible as described.',
+      ],
+      distractorWhy: [
+        'Correct — the reasoning in the option matches the computation.',
+        'Modifications are not forbidden; the material states they may reduce significance or comparability, which is why they must be reported.',
+        'Interview findings are transferred, not generalised statistically; the sample size objection applies the wrong standard.',
+        'The survey cannot establish a mechanism, so the interviews answer a question the survey does not.',
+      ],
+      trap: 'Applying the "no changes" instinct instead of the documented-change rule, or dismissing one strand of a mixed design as redundant.',
+      transfer: 'Evaluation reports, clinical protocols and policy evaluations are all judged by the same rule: what each evidence strand can show, and whether changes were disclosed.',
+    },
+    tags: ['advanced', 'multi-concept'],
+  },
+  {
+    id: 'adv-sci-01',
     domainId: 'D13',
-    conceptIds: ['C13.model', 'C09.assume', 'C13.scaling'],
+    conceptIds: ['C13.model', 'C13.scaling', 'C05.gas'],
+    label: 'PREPARATION_EXTENSION',
     stem:
-      'A start-up scales a laboratory process by a factor of 1 000 in volume. In the laboratory, the reaction is limited by the rate at which the reactants are mixed. ' +
-      'The team plans to keep the mixing power per litre constant. Which outcome should be expected?',
+      'A balloon rises from the ground to 5 000 m. The pressure falls by about 40 % and the temperature falls as well. Which prediction about the volume is most defensible?',
     options: [
-      o('Mixing becomes insufficient: keeping power per litre constant does not keep mixing time constant, because the distances over which mixing must act grow with the length scale.', 'none', 'Correct: larger vessels need proportionally more mixing power, so a constant power per litre cannot maintain the same mixing behaviour.'),
-      o('The process scales directly, because every intensive quantity (per litre) is preserved.', 'linearity_assumption', 'Preserving an intensive quantity is not sufficient: the transport distances and diffusion times scale with the size of the vessel.'),
-      o('The reaction becomes faster, because a larger volume offers more contact area between the reactants.', 'concept_confusion', 'Contact area per litre does not increase with volume; if anything, transport limitations worsen.'),
-      o('Nothing can be said, because scale-up depends on equipment quality alone.', 'wrong_assumption', 'Scale-up behaviour follows from the physics of transport and mixing, which can be reasoned about without knowing the manufacturer.'),
+      o('The volume grows substantially — by more than the pressure ratio would suggest is impossible, and the cooling works against it, so the pressure effect dominates but not by the full 1/0,6 factor.', 'none', 'Correct: the falling pressure expands the gas, while the falling temperature contracts it; the pressure effect is the larger one, so the volume grows but not by the full factor $1/0{,}6$.'),
+      o('The volume grows by exactly the factor $1/0{,}6 \\approx 1{,}67$ because pressure and volume are inversely proportional.', 'model_assumption_error', 'The inverse relation $pV = $ constant holds at *constant temperature*; the ascent also cools the gas, so the factor is an upper bound, not the answer.'),
+      o('The volume is unchanged because the temperature also falls, and the two effects cancel.', 'wrong_assumption', 'There is no reason for the two effects to cancel exactly: their magnitudes are set by different physical relations.'),
+      o('The volume cannot be predicted without knowing the amount of gas in the balloon.', 'concept_confusion', 'The amount of gas is fixed inside a closed balloon; it cancels out of the ratio, so the prediction does not need it.'),
+    ],
+    correct: 0,
+    difficulty: 7,
+    reasoningType: 'estimation_scaling',
+    cognitiveMove: 'effect_of_change',
+    style: 'effect_direction',
+    hints: ['Which relation would hold if the temperature were constant?', 'Now ask what the falling temperature does to the same gas.'],
+    explanation: {
+      testing: 'Applying a model only within the conditions that make it valid — and reasoning about two opposing effects.',
+      matters: 'The pressure ratio (about 1,67), the cooling, and the fact that the balloon is closed (the amount of gas is constant).',
+      concept: 'Boyle\u2019s law is the isothermal case of the ideal-gas relation; temperature appears only in the general form.',
+      why: 'The general relation $pV = nRT$ contains both effects. A 40 % pressure drop alone would give a factor 1,67; cooling reduces the volume and therefore lowers that factor without reversing it.',
+      steps: [
+        'Fixed amount of gas: $V \\propto T/p$.',
+        'Pressure falls to about 0,6 of the ground value, which alone would multiply the volume by about 1,67.',
+        'Temperature also falls, which multiplies the volume by a factor below 1.',
+        'Net effect: a substantial volume increase, but smaller than 1,67 — and the balloon bursts or the skin stretches, depending on how the material behaves.',
+      ],
+      distractorWhy: [
+        'Correct — the reasoning in the option matches the computation.',
+        'This is the isothermal result; the ascent is not isothermal.',
+        'Nothing forces the two effects to cancel exactly.',
+        'The amount of gas is fixed, so it cancels in the ratio.',
+      ],
+      trap: 'Using $p_1V_1 = p_2V_2$ whenever a gas is involved, without checking whether the temperature is constant.',
+      transfer: 'Every model has a "held constant" clause. Items that change two variables at once test whether you notice it — and in engineering practice the same oversight breaks a calculation.',
+    },
+    tags: ['advanced', 'extension'],
+  },
+  {
+    id: 'adv-data-01',
+    domainId: 'D03',
+    conceptIds: ['C03.distort', 'C03.gradient', 'C01.ratio'],
+    label: 'OFFICIAL_FIELD_LIST',
+    stem:
+      'A chart shows a company’s revenue from 100 to 104 (in millions) with a vertical axis from 99 to 105, and reports "strong growth". A second chart shows the same company’s cost from 80 to 84 with an axis from 0 to 100 and reports "stable cost". Which statement is correct?',
+    options: [
+      o('Both descriptions are misleading in the same way: the trimmed axis exaggerates the revenue change, while the full axis hides a cost change of the same relative size.', 'none', 'Correct: revenue rose 4 % and cost rose 5 % — the *relative* changes are comparable, and only the axes make one look dramatic and the other flat.'),
+      o('The descriptions are fine because each chart uses its own scale.', 'graph_misread', 'Each chart may be internally consistent, but comparing the stories they tell requires looking at the relative change, not the visual slope.'),
+      o('The revenue description is misleading, the cost description is not, because the cost axis starts at zero.', 'overprecision', 'A full axis avoids exaggeration but does not make the *comparison* fair: a 5 % cost rise is being described as stable.'),
+      o('Neither chart can be judged without knowing the profit.', 'irrelevant_data_used', 'The question is about the description of the changes shown; profit is a different quantity.'),
     ],
     correct: 0,
     difficulty: 6,
-    testing: 'Applying scaling reasoning to a process rather than to a static shape.',
-    matters: 'The length scale (×10 for a 1 000-fold volume) and the fact that transport processes depend on distance.',
-    concept: 'Intensive quantities (per litre) do not capture transport behaviour; mixing and heat transfer depend on the length scale.',
-    why: 'A process limited by transport has a rate that depends on the distance over which transport must occur, and that distance grows with the vessel size while a constant power per litre does not compensate for it.',
-    steps: [
-      'Volume ×1000 ⇒ length scale ×10 for each spatial dimension.',
-      'Transport time scales roughly with the square of the length scale in diffusive regimes, and with the circulation pattern in stirred ones.',
-      'Constant power per litre therefore cannot maintain the laboratory mixing regime ⇒ the reaction rate may fall.',
-    ],
-    trap: 'Assuming that matching an intensive quantity (per litre, per kg) guarantees identical behaviour across scales.',
-    transfer: 'The same reasoning explains why laboratory catalysts, bioreactors and oven recipes cannot simply be multiplied.',
-    hints: ['By what factor do the linear dimensions grow when the volume grows a thousandfold?', 'Does mixing act over a point or over a distance?'],
-    reasoning: 'estimation_scaling',
-    move: 'effect_of_change',
-  }),
-
-  /* ---------------- D12/D14 — evidence, level 6 ---------------- */
-  A({
-    id: 'ad12-01',
-    domainId: 'D12',
-    conceptIds: ['C12.confound', 'C14.conclude', 'C11.general'],
-    stem:
-      'Three studies examine the link between a training programme and subsequent promotion: (A) a survey showing that trained employees are promoted more often; (B) a matched-pair comparison of 200 employees over three years; (C) interviews with 15 promoted employees, 11 of whom had been trained. ' +
-      'A report summarises: “The studies agree, so the programme works.” Which criticism of the summary is strongest?',
-    options: [
-      o('The studies have different designs and different inferential reach; agreement between them adds plausibility but does not remove the confounding in study A, and study C cannot support a prevalence claim at all.', 'none', 'Correct: agreement across designs is suggestive, but each study has its own limitation, and the summary presents them as if they were interchangeable.'),
-      o('The summary is correct, because three independent studies cannot all be wrong.', 'overprecision', 'Independent studies can share the same bias; agreement is not proof.'),
-      o('The summary is wrong because study C is qualitative.', 'overprecision', 'Qualitative evidence is legitimate for mechanism questions; it is not disqualifying per se.'),
-      o('The summary should instead claim that the programme has no effect, because study A is confounded.', 'wrong_assumption', 'One confounded study does not establish the absence of an effect; it fails to establish its presence.'),
-    ],
-    correct: 0,
-    difficulty: 6,
-    testing: 'Weighting evidence of different designs rather than counting studies.',
-    matters: 'What each design can and cannot show: A cannot exclude selection, B controls some of it, C describes a mechanism in promoted employees.',
-    concept: 'Evidence quality differs by design; synthesis must respect each design’s inferential scope.',
-    why: 'The conclusion requires the strength of the best available comparison, not the number of studies that point in the same direction.',
-    steps: [
-      'Classify each study: cross-sectional survey, matched comparison, case-based interviews.',
-      'Identify the inferential limits of each.',
-      'Conclude that agreement is supportive but the report’s flat claim overstates what the set establishes.',
-    ],
-    trap: 'Treating “three studies agree” as a stronger signal than “one well-designed comparison”.',
-    transfer: 'This is the discipline of evidence synthesis in policy, medicine and management.',
-    hints: ['What can each design establish on its own?', 'Does agreement across weak designs equal strength?'],
-    reasoning: 'evidence_evaluation',
-    move: 'explain_or_critique',
-  }),
-
-  /* ---------------- D15 — argument, level 6 ---------------- */
-  A({
-    id: 'ad15-01',
+    reasoningType: 'representation_transfer',
+    cognitiveMove: 'interpret_representation',
+    style: 'graph_choice',
+    hints: ['Compute the relative change of each quantity first.', 'Then ask what each axis choice does to the visual impression.'],
+    explanation: {
+      testing: 'Judging a presentation against the underlying relative changes rather than the visual impression.',
+      matters: 'The two relative changes (4 % and 5 %) and the two axis ranges.',
+      concept: 'A trimmed axis exaggerates differences; a full axis can hide them. The numbers decide, not the slope.',
+      why: 'Both descriptions are produced by axis framing rather than by the data: the smaller relative change looks like a leap and the larger one looks like stability.',
+      steps: [
+        'Revenue: $\\frac{104-100}{100} = 4\\ \\%$. Cost: $\\frac{84-80}{80} = 5\\ \\%$.',
+        'The trimmed axis (99–105) magnifies a 4 % change into a steep line.',
+        'The full axis (0–100) compresses a 5 % change into a nearly flat line.',
+        'Conclusion: the relative changes are comparable; the descriptions are the artefacts of framing.',
+      ],
+      distractorWhy: [
+        'Correct — the reasoning in the option matches the computation.',
+        'Internal consistency is not the issue; comparability is.',
+        'The assessment is incomplete: an honest axis can still accompany a misleading description.',
+        'Profit is irrelevant to the judgement about the two descriptions.',
+      ],
+      trap: 'Reading charts by slope instead of by relative change, and assuming an honest axis guarantees an honest statement.',
+      transfer: 'The same check exposes misleading reporting in any dashboard, business case or policy brief.',
+    },
+    tags: ['advanced'],
+  },
+  {
+    id: 'adv-arg-01',
     domainId: 'D15',
     conceptIds: ['C15.necessary', 'C15.quantifier', 'C15.inference'],
+    label: 'PREPARATION_EXTENSION',
     stem:
-      '“Every firm in our sample that adopted the standard also reduced defects. Some firms that did not adopt it also reduced defects. Therefore adoption is neither sufficient nor necessary for reducing defects.” ' +
-      'Which statement about this reasoning is correct?',
+      'A regulation states: "Every laboratory that handles category-3 material must keep a logbook and must have a safety officer." Which inference is valid?',
     options: [
-      o('Both conclusions are justified by the two observations: the non-adopters who improved defeat sufficiency, and a conclusion about necessity would require seeing firms that improved only by adopting.', 'none', 'Correct: sufficiency fails because improvement occurred without adoption; necessity (adoption present in all improving firms) is not established — and neither is its absence claimed by these observations alone.'),
-      o('The reasoning is invalid because the sample is not representative.', 'irrelevant_data_used', 'Representativeness affects generalisation, not the logical relations within the observed sample.'),
-      o('The reasoning is invalid because necessity cannot be discussed without a control group.', 'definition_misuse', 'Necessity is a logical relation between conditions that can be examined in the data; a control group concerns causal inference, not the definition.'),
-      o('The reasoning is valid, but it should have said that adoption is harmful.', 'wrong_assumption', 'Nothing in the observations supports harm; absence of necessity and sufficiency says nothing about negative effects.'),
+      o('If a laboratory does not keep a logbook, it does not handle category-3 material.', 'none', 'Correct: the statement says category-3 handling is *sufficient* for keeping a logbook, so the absence of a logbook excludes that category (contraposition).'),
+      o('Every laboratory with a safety officer handles category-3 material.', 'sufficient_necessary_confusion', 'The original statement gives no such reverse implication: having an officer is necessary for category-3 work, not evidence of it.'),
+      o('A laboratory that handles other categories must also keep a logbook.', 'scope_error', 'The rule is limited to category-3 material; it says nothing about other categories.'),
+      o('A laboratory can avoid the logbook by not appointing a safety officer.', 'inequality_direction', 'Both duties apply jointly to category-3 laboratories; dropping one does not remove the other.'),
     ],
     correct: 0,
     difficulty: 6,
-    testing: 'Necessary/sufficient analysis applied to a compound pair of observations.',
-    matters: 'Which observation bears on which logical relation.',
-    concept: 'Sufficiency fails if the outcome occurs without the condition; necessity fails if the outcome occurs only with it… and both relations are logically independent of each other.',
-    why: 'The two logical relations are tested by different counterexamples, so each must be evaluated separately rather than as a single verdict.',
-    steps: [
-      'Sufficiency (adoption ⇒ improvement): refuted by improving firms that did not adopt.',
-      'Necessity (improvement ⇒ adoption): the observed improving non-adopters refute necessity as well — so the statement should say necessity is absent, and the argument’s own evidence establishes that.',
-      'Check each option against this analysis rather than against intuitions about causality.',
-    ],
-    trap: 'Mixing up logical relations with causal strength, or dismissing the reasoning because the sample is small.',
-    transfer: 'This analysis is used to read “necessary conditions” in standards, specifications and policy documents accurately.',
-    hints: ['Write each claim as an implication and find its counterexample.', 'Which observation speaks to which direction of the implication?'],
-    reasoning: 'logical_deduction',
-    move: 'general_case',
-  }),
-
-  /* ---------------- D03/D01 — data + rate, level 6 ---------------- */
-  A({
-    id: 'ad03-01',
-    domainId: 'D03',
-    conceptIds: ['C03.gradient', 'C03.distort', 'C01.ratio'],
+    reasoningType: 'logical_deduction',
+    cognitiveMove: 'general_case',
+    style: 'reverse_question',
+    hints: ['Write the rule as an implication: category-3 handling ⇒ logbook.', 'Which of the options is the contrapositive of that implication, and which one reverses it?'],
+    explanation: {
+      testing: 'Contraposition versus reversal of an implication in a rule (normative) text.',
+      matters: 'The scope ("category-3 material") and the direction of the implication.',
+      concept: 'From $A \\Rightarrow B$ one may infer $\\neg B \\Rightarrow \\neg A$ (contraposition), but not $B \\Rightarrow A$ (reversal).',
+      why: 'Only the contrapositive is logically equivalent to the original rule; every other option either reverses the implication or widens its scope.',
+      steps: [
+        'Formalise: handling category-3 material ⇒ keeps logbook (and has a safety officer).',
+        'Contrapositive: no logbook ⇒ does not handle category-3 material. That is option 1.',
+        'Check the others: option 2 reverses the implication, option 3 widens the scope, option 4 treats the duties as alternatives.',
+      ],
+      distractorWhy: [
+        'Correct — contraposition.',
+        'Reversing the implication: a necessary condition is treated as if it were sufficient.',
+        'The rule is limited to category-3 material; the inference says nothing about other categories.',
+        'The two duties are stated jointly, not as alternatives.',
+      ],
+      trap: 'Reading "must" as evidence of the antecedent (the reverse direction), and reading a rule as if it covered everything.',
+      transfer: 'Specifications, contracts and safety rules are all written as one-directional implications; reading them precisely is a professional skill in every field the module names.',
+    },
+    tags: ['advanced', 'extension'],
+  },
+  {
+    id: 'adv-econ-01',
+    domainId: 'D10',
+    conceptIds: ['C10.breakeven', 'C10.marginal', 'C10.opportunity'],
+    label: 'PREPARATION_EXTENSION',
     stem:
-      'A table gives a firm’s output and total cost for five plant sizes. Between the smallest and the largest plant, output rises by 60 % and total cost rises by 30 %. ' +
-      'A manager concludes: “Our average cost per unit has fallen by 30 %.” Which assessment is correct?',
+      'A workshop has fixed costs of €18 000 per month and a contribution margin of €30 per unit, so it breaks even at 600 units. It currently produces 600 units. A customer offers to buy 200 additional units at €18 each; the variable cost is €12 per unit, and the workshop has spare capacity. Which decision is correct, and why?',
     options: [
-      o('The claim is wrong: average cost changes by the factor of the cost change divided by the factor of the output change, i.e. by about 19 % — not by 30 %.', 'none', 'Correct: average cost = total cost / output, so relative changes divide: 1.30/1.60 ≈ 0.81, a fall of about 19 %.'),
-      o('The claim is correct: both changes are percentages, so they can be subtracted.', 'linearity_assumption', 'Percentages combine multiplicatively; subtracting them confuses absolute and relative changes.'),
-      o('The claim is wrong, because average cost cannot be computed from a table of totals.', 'wrong_assumption', 'Average cost is exactly total divided by output, so the table suffices.'),
-      o('The claim is wrong: average cost has risen by about 30 %.', 'causal_direction_reversed', 'Costs grew more slowly than output, so average cost falls; the direction is reversed here.'),
+      o('Accept: the extra order contributes $(18-12)\\cdot200 = €1\\,200$ towards fixed costs, which is profit while spare capacity exists.', 'none', 'Correct: beyond break-even, the contribution of each extra unit is profit, and the spare capacity means no alternative use is displaced.'),
+      o('Reject: the price of €18 is below the break-even price of €30 per unit.', 'definition_misuse', '€30 is the *contribution margin* needed to cover fixed costs at 600 units, not a minimum price for an additional unit that uses spare capacity.'),
+      o('Reject: the average cost per unit at 600 units is €30, which is above €18.', 'ratio_error', 'Average cost includes the fixed costs that are already covered by the existing production; the decision at the margin compares only the price with the variable cost.'),
+      o('Accept, but only because the fixed costs are sunk.', 'wrong_assumption', 'The fixed costs are not sunk — they are covered by the existing 600 units. The reason to accept is that the additional units contribute and displace nothing.'),
+    ],
+    correct: 0,
+    difficulty: 7,
+    reasoningType: 'optimisation_reasoning',
+    cognitiveMove: 'classify_situation',
+    style: 'critique_reasoning',
+    hints: ['What does each *additional* unit add to the result?', 'Is anything else being given up by using the spare capacity?'],
+    explanation: {
+      testing: 'Marginal decision-making with spare capacity, using contribution rather than average cost.',
+      matters: 'The variable cost (€12), the offered price (€18), the spare capacity, and the fact that existing production already covers the fixed costs.',
+      irrelevant: 'The break-even quantity of 600 units: it is already reached, so it does not set a minimum price for additional units.',
+      concept: 'Beyond break-even, each additional unit contributes (price − variable cost) to profit; average cost is not the decision criterion.',
+      why: 'Only the incremental flows change: the order brings €3 600 of additional revenue and €2 400 of additional variable cost, so €1 200 of contribution. Fixed costs are unaffected because the existing production already covers them.',
+      steps: [
+        'Margin on the additional units: $18 - 12 = 6$ € per unit.',
+        'Contribution of the order: $6 \\cdot 200 = 1\\,200$ €.',
+        'No alternative use of the spare capacity is displaced, so the opportunity cost is zero.',
+        'Fixed costs are unchanged, so the €1 200 improves the result — accept.',
+      ],
+      distractorWhy: [
+        'Correct — the reasoning in the option matches the computation.',
+        'The break-even price is not a price floor for spare capacity.',
+        'Average cost is not a marginal cost; it contains fixed costs that do not change.',
+        'The fixed costs here are covered, not sunk; the argument for accepting is the contribution, not the sunk cost.',
+      ],
+      trap: 'Rejecting profitable additional business because its price is below the average cost — the classic misapplication of average thinking to a marginal decision.',
+      transfer: 'Airlines, hotels, printers and workshops all price spare capacity this way; the same reasoning also prevents the opposite error of justifying any order with "fixed costs are sunk".',
+    },
+    tags: ['advanced', 'extension'],
+  },
+  {
+    id: 'adv-comp-01',
+    domainId: 'D08',
+    conceptIds: ['C08.growth', 'C08.trace', 'C13.scaling'],
+    label: 'PREPARATION_EXTENSION',
+    stem:
+      'Two procedures find the largest value in a list of $n$ numbers. Procedure A compares every number with every other number. Procedure B sorts the list once and then reads the last value. For $n = 10$ procedure A takes about 45 comparisons and procedure B about 30 operations. Which statement is defensible for $n = 10\\,000$?',
+    options: [
+      o('B is far faster: A grows with $n^2$ while B grows more slowly, so the advantage increases with the size of the list.', 'none', 'Correct: the comparison counts belong to different growth classes, and the class difference dominates the constants at large $n$.'),
+      o('A is faster, because with $n = 10$ it needed fewer operations.', 'linearity_assumption', 'The comparison at $n = 10$ compares constants, not growth: the ranking at small sizes does not carry over to 10 000.'),
+      o('They are equivalent, because both must look at every number at least once.', 'concept_confusion', 'Both must indeed look at every number once, but A looks at every pair, which is the dominating term.'),
+      o('Nothing can be said without knowing the exact operation costs.', 'overprecision', 'Exact constants are unknown, but the growth class difference of $n^2$ versus roughly $n\\log n$ is decisive at this size.'),
     ],
     correct: 0,
     difficulty: 6,
-    testing: 'Combining percentage reasoning with a ratio definition in a data-interpretation setting.',
-    matters: 'The definition of average cost and the multiplicative combination of relative changes.',
-    irrelevant: 'The absolute values in the table: only the relative changes matter for a claim about a ratio.',
-    concept: 'For a ratio, relative changes divide (or equivalently, indices divide).',
-    why: 'Average cost is a quotient, so its index is the quotient of the two indices.',
-    steps: [
-      'Cost index: 1.30. Output index: 1.60.',
-      'Average-cost index: 1.30 / 1.60 = 0.8125.',
-      'So average cost falls by about 18.75 %, i.e. roughly 19 %.',
+    reasoningType: 'estimation_scaling',
+    cognitiveMove: 'general_case',
+    style: 'critique_reasoning',
+    hints: ['Classify each procedure by growth (constant, linear, quadratic, logarithmic).', 'Then ask which classification dominates when $n$ becomes large.'],
+    explanation: {
+      testing: 'Reasoning about growth classes rather than about measured times at a single small input size.',
+      matters: 'The relation described for each procedure: all pairs versus one pass plus the sorting effort.',
+      concept: 'Growth class dominates constants for large inputs.',
+      why: 'A compares $\\frac{n(n-1)}{2}$ pairs — quadratic. B sorts and then reads: about $n\\log n$. At $n = 10\\,000$ the difference is of the order of 50 million versus 130 thousand operations.',
+      steps: [
+        'A: every pair, $\\frac{n(n-1)}{2} \\approx \\frac{n^2}{2}$ comparisons — quadratic.',
+        'B: one sort, $\\approx n\\log_2 n$ — much slower-growing.',
+        'At $n = 10$ the constants happen to make A look competitive; at $n = 10\\,000$: $\\approx 5\\cdot10^7$ versus $\\approx 1{,}3\\cdot10^5$.',
+        'B is faster by a factor of a few hundred.',
+      ],
+      distractorWhy: [
+        'Correct — the reasoning in the option matches the computation.',
+        'A single small measurement cannot establish a growth ranking.',
+        'Both touching every element does not make the procedures equivalent; the pair structure is what dominates.',
+        'Exact constants are unnecessary when the classes differ by orders of magnitude.',
+      ],
+      trap: 'Extrapolating from a measurement at a small input size — the classic error that hides behind "benchmarks".',
+      transfer: 'The same reasoning decides database designs, routing algorithms and even organisational processes: count the structure, then scale.',
+    },
+    tags: ['advanced', 'extension'],
+  },
+  {
+    id: 'adv-mixed-01',
+    domainId: 'D01',
+    conceptIds: ['C01.ratio', 'C01.estimate', 'C03.distort', 'C13.precision'],
+    label: 'OFFICIAL_FIELD_LIST',
+    stem:
+      'A report states: "Our model predicts €1 483 726 of savings, based on an estimated 12 000 users and an average saving of about €120 per user." Which criticism of the *presentation* of the result is strongest?',
+    options: [
+      o('The figure is overprecise: it is presented to the euro although the inputs are estimates, and $12\\,000 \\cdot 120$ already gives a round €1 440 000.', 'none', 'Correct: the precision of the output cannot exceed the precision of the inputs; "about €1,4 million" is the honest version of this calculation.'),
+      o('The figure is wrong, because $12\\,000 \\times 120$ equals 1 440 000 and not 1 483 726.', 'calculation_slip', 'The two figures need not be equal: the €120 is an average, and the total depends on the actual distribution. The presentation is the problem, not the multiplication.'),
+      o('The figure is too low, because savings usually grow faster than the user count.', 'wrong_assumption', 'There is nothing in the statement about growth of savings with users; that is speculation.'),
+      o('Nothing is wrong: reporting the exact number shows that the model was computed carefully.', 'overprecision', 'Precision is not care. Presenting an estimate to the last euro suggests an accuracy the inputs cannot support.'),
     ],
-    trap: 'Subtracting percentages (30 % − 60 %), which predicts a fall of 30 % — close enough to look right.',
-    transfer: 'The same index arithmetic underlies productivity (output per hour), unit labour cost and emission intensity.',
-    hints: ['Write average cost as a quotient of the two quantities in the table.', 'Relative changes of a quotient are obtained by dividing the two factors.'],
-    reasoning: 'multi_step_application',
-    move: 'interpret_representation',
-  }),
+    correct: 0,
+    difficulty: 6,
+    reasoningType: 'conceptual_discrimination',
+    cognitiveMove: 'explain_or_critique',
+    style: 'critique_reasoning',
+    hints: ['Compare the precision of the inputs with the precision of the output.', 'What would the honest rounding of this estimate look like?'],
+    explanation: {
+      testing: 'Precision versus accuracy, applied to a reported quantity.',
+      matters: 'The words "estimated" and "about" in the inputs, and the euro-level precision of the output.',
+      irrelevant: 'Whether the model is good: the criticism is about how the result is presented.',
+      concept: 'A computed value carries at most the precision of its inputs; extra digits suggest accuracy that does not exist.',
+      why: 'With inputs of the order "about 12 000" and "about €120", the honest output is "about €1,4 million" — the last five digits are noise dressed as knowledge.',
+      steps: [
+        'The inputs are estimates: 12 000 users (about) and €120 each (about).',
+        'Even the ideal product is 1 440 000 €, which differs from the reported figure in the leading digits.',
+        'Precision of the output therefore has no support beyond roughly two significant figures.',
+        'The strongest criticism is overprecision: report €1,4 million, or state a range.',
+      ],
+      distractorWhy: [
+        'Correct — the reasoning in the option matches the computation.',
+        'The exact product of the two rounded inputs is not the criterion; the averages and distributions make the difference legitimate.',
+        'Growth of savings with users is not part of the statement — this is an invented assumption.',
+        'Careful computation and honest reporting are different things.',
+      ],
+      trap: 'Reading extra digits as a sign of quality, and therefore accepting an overprecise forecast.',
+      transfer: 'Charts, forecasts, dashboards and exam answers all lose credibility the same way: more digits than the data can carry.',
+    },
+    tags: ['advanced'],
+  },
 ];
+
+export const ADVANCED_AUTHORED: Question[] = ADVANCED.map((spec) => Q(spec));

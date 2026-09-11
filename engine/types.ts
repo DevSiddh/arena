@@ -77,6 +77,82 @@ export const MOVE_TEXT: Record<CognitiveMove, string> = {
   classify_situation: 'Classify a described situation',
 };
 
+/** Task type of the item — what the student has to *do*, independent of the topic. */
+export type ActivityKind =
+  | 'calculation'
+  | 'estimation'
+  | 'graph_interpretation'
+  | 'information_selection'
+  | 'model_assessment'
+  | 'formula_transformation'
+  | 'argumentation'
+  | 'classification'
+  | 'trace'
+  | 'analysis';
+
+export const ACTIVITY_TEXT: Record<ActivityKind, string> = {
+  calculation: 'Calculation',
+  estimation: 'Estimation & order of magnitude',
+  graph_interpretation: 'Graph interpretation',
+  information_selection: 'Selecting relevant information',
+  model_assessment: 'Model assessment (effect of a change)',
+  formula_transformation: 'Formula transformation',
+  argumentation: 'Argumentation',
+  classification: 'Classification of a case',
+  trace: 'Procedure tracing',
+  analysis: 'Analysis',
+};
+
+/** Cognitive skill the item exercises — how demanding the work is, in one word. */
+export type SkillKind =
+  | 'basic_recall'
+  | 'routine_procedure'
+  | 'transfer'
+  | 'reasoning_under_uncertainty'
+  | 'model_critique'
+  | 'quantitative_literacy'
+  | 'evidence_judgement';
+
+export const SKILL_TEXT: Record<SkillKind, string> = {
+  basic_recall: 'Basic recall',
+  routine_procedure: 'Routine procedure',
+  transfer: 'Transfer',
+  reasoning_under_uncertainty: 'Reasoning under uncertainty',
+  model_critique: 'Model critique',
+  quantitative_literacy: 'Quantitative literacy',
+  evidence_judgement: 'Evidence judgement',
+};
+
+/** Contextual setting of the item — the "everyday / technical / …" dimension. */
+export type SceneKind = 'everyday' | 'technical' | 'economic' | 'scientific' | 'social_science' | 'computational';
+
+export const SCENE: Record<SceneKind, string> = {
+  everyday: 'Everyday context',
+  technical: 'Technical context',
+  economic: 'Economic context',
+  scientific: 'Scientific context',
+  social_science: 'Social-science context',
+  computational: 'Computational context',
+};
+
+/**
+ * Evaluation section of a question — the required statement of what the item measures.
+ *
+ * The official material only says that Subject Module questions cover mathematics, computational
+ * sciences, natural sciences, engineering, business administration, economics, social sciences and
+ * humanities, so the module records a *task type*, a *skill level* and a *setting* for every item
+ * and prints them with the item. That is our transparency device, not an official taxonomy.
+ */
+export interface Evaluation {
+  activity: ActivityKind;
+  skill: SkillKind;
+  scene: SceneKind;
+  /** Which difficulty levels this item lets the student certify. */
+  certifies?: Difficulty[];
+  /** One-line justification of the assignment, shown in the printable report. */
+  note?: string;
+}
+
 /** Surface form of the item — used to defeat "this looks like the last one". */
 export type ItemStyle =
   | 'numeric_direct'
@@ -86,7 +162,8 @@ export type ItemStyle =
   | 'critique_reasoning'
   | 'relevance_filter'
   | 'missing_information'
-  | 'reverse_question';
+  | 'reverse_question'
+  | 'description_choice';
 
 /**
  * Error mechanism attached to every distractor. This is what allows the diagnostic
@@ -214,6 +291,7 @@ export type Verification =
   | { solver: 'vector.cross'; payload: { a: number[]; b: number[] } }
   | { solver: 'vector.parallelogram_area'; payload: { a: [number, number]; b: [number, number] } }
   | { solver: 'vector.triple'; payload: { a: number[]; b: number[]; c: number[] } }
+  | { solver: 'vector.components'; payload: { a: number[] } }
   | { solver: 'hydro.pressure'; payload: { depth_m: number; rho: number; p0_pa: number; g: number } }
   | { solver: 'hydro.pressure_diff'; payload: { d1: number; d2: number; rho: number; g: number } }
   | { solver: 'hydro.buoyant_mass'; payload: { volume_m3: number; submergedFraction: number; rho: number } }
@@ -235,6 +313,11 @@ export type Verification =
   | { solver: 'physics.efficiency'; payload: { useful_J: number; input_J: number } }
   | { solver: 'physics.flow_continuity'; payload: { area1: number; velocity1: number; area2: number } }
   | { solver: 'physics.lever'; payload: { load_N: number; loadArm: number; effortArm: number } }
+  | { solver: 'physics.moment'; payload: { force_N: number; arm_m: number } }
+  | { solver: 'physics.lever_arm'; payload: { load_N: number; loadArm_m: number; effort_N: number } }
+  | { solver: 'physics.mechanical_advantage'; payload: { loadArm_m: number; effortArm_m: number } }
+  | { solver: 'physics.pressure_from_force'; payload: { force_N: number; area_m2: number } }
+  | { solver: 'physics.force_from_pressure'; payload: { pressure_bar: number; area_m2: number } }
   | { solver: 'physics.density'; payload: { mass_kg: number; volume_m3: number } }
   | { solver: 'physics.gas_ratio'; payload: { p1: number; p2: number; v1: number } }
   | { solver: 'math.percentage_change'; payload: { from: number; to: number } }
@@ -269,6 +352,8 @@ export interface Question {
   explanation: Explanation;
   /** Payload for the independent solver. Present on every numeric item. */
   verification?: Verification;
+  /** Required evaluation section: what the item makes the student do (see Evaluation). */
+  evaluation?: Evaluation;
   provenance: 'authored' | 'generated';
   /** Free-form tags used by the exam assembler and the anti-memorisation checks. */
   tags: string[];
@@ -291,6 +376,8 @@ export interface Stimulus {
   label: ConfidenceLabel;
   /** Domains whose concepts the stimulus supports. */
   domainIds: string[];
+  /** Concepts the stimulus explicitly develops — used to attach questions to it. */
+  conceptIds?: string[];
   /** Input text in the official two-part item anatomy: text + questions. */
   body: string;
   figure?: Figure;

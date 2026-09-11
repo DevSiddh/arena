@@ -590,9 +590,9 @@ export function genEfficiency(rng: Rng): Question {
 }
 
 export function genGasLaw(rng: Rng): Question {
-  const p1 = rng.pick([1, 2, 3, 4]);
-  const p2 = p1 * rng.pick([2, 3, 4]);
-  const v1 = rng.pick([3, 4, 6, 8, 12, 24]);
+  const p1 = rng.pick([1, 2, 3, 4, 5]);
+  const p2 = p1 * rng.pick([2, 3, 4, 5]);
+  const v1 = rng.pick([3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 20, 24, 30, 36]);
   const v2 = (p1 * v1) / p2;
   return assemble(
     {
@@ -631,40 +631,229 @@ export function genGasLaw(rng: Rng): Question {
 /* D07 — mechanics & engineering reasoning                            */
 /* ================================================================== */
 
+/**
+ * Levers and moments — three item shapes, because the concept has three separable ideas:
+ *
+ *   moment   : the turning effect itself (F · arm)                     → C07.moment, level 2
+ *   balance  : equilibrium by equal moments at unequal forces/arms     → C07.moment, level 3
+ *   advantage: the mechanical advantage, a pure ratio                  → C07.lever, level 2
+ *
+ * The earlier single-shape version was unusable: its third distractor simplified algebraically to
+ * the correct answer (loadArm + loadArm·(load−effort)/effort = loadArm·load/effort), so every draw
+ * was rejected as a duplicate option. Distractors here are the mistakes students actually make —
+ * the wrong arm, the inverted ratio, the extra length instead of the total.
+ */
 export function genLever(rng: Rng): Question {
-  const load = rng.pick([100, 200, 250, 400, 500]);
-  const loadArm = rng.pick([0.5, 1, 1.5, 2]);
-  const effortArm = loadArm * rng.pick([2, 3, 4, 5]);
+  const shape: 'moment' | 'balance' | 'advantage' = rng.pick(['moment', 'balance', 'advantage']);
+
+  if (shape === 'moment') {
+    const load = rng.pick([60, 80, 120, 150, 200, 240, 300, 400, 500]);
+    const barLength = rng.pick([2, 2.4, 3, 3.6, 4]);
+    // 0.5 and 1 are excluded: they would make "load · barLength" or "load" coincide with the
+    // correct moment for some draws, and two options that denote the same value are a defect.
+    const pivotFromLeft = rng.pick([0.4, 0.6, 0.8, 1.2, 1.5]);
+    if (pivotFromLeft >= barLength) return genLever(rng);
+    const moment = load * pivotFromLeft;
+    return assemble(
+      {
+        id: makeId('moment', rng),
+        domainId: 'D07',
+        conceptIds: ['C07.moment'],
+        label: 'PREPARATION_EXTENSION',
+        stem: `A uniform bar ${num(barLength, 2)} m long rests horizontally on a pivot placed ${num(pivotFromLeft, 2)} m from its left end. A load of ${load} N hangs from the left end. What is the moment of this load about the pivot?`,
+        figure: { kind: 'lever', loadArm: pivotFromLeft, effortArm: barLength - pivotFromLeft, load },
+        options: [
+          { text: `${num(moment, 2)} N·m`, errorTag: 'none', rationale: 'Correct: the moment is the force multiplied by the perpendicular distance from the pivot.', correct: true },
+          { text: `${num(load * barLength, 2)} N·m`, errorTag: 'irrelevant_data_used', rationale: `The full bar length was used (${num(barLength, 2)} m) instead of the distance from the load to the pivot (${num(pivotFromLeft, 2)} m).` },
+          { text: `${num(load, 2)} N·m`, errorTag: 'concept_confusion', rationale: 'The force was reported unchanged — that is the force, not its turning effect, and it is not even in the right unit.' },
+          { text: `${num(load / pivotFromLeft, 2)} N·m`, errorTag: 'ratio_error', rationale: 'The force was divided by the distance; the moment is a product, so dividing shrinks it when the arm is short.' },
+        ],
+        difficulty: 2,
+        reasoningType: 'rule_application',
+        cognitiveMove: 'execute_rule',
+        style: 'numeric_direct',
+        hints: ['A moment is force × perpendicular distance from the pivot.', 'Only the distance from the *pivot* to the force matters, not the length of the bar.'],
+        explanation: {
+          testing: 'Identifying the moment of a force and picking the correct lever arm.',
+          matters: `The load (${load} N) and its distance from the pivot (${num(pivotFromLeft, 2)} m).`,
+          irrelevant: `The total bar length (${num(barLength, 2)} m) — it looks relevant but the moment uses the distance to the pivot.`,
+          concept: 'Moment of a force: $M = F \\cdot d$, with $d$ perpendicular to the force.',
+          why: 'A force turns a body more effectively the further from the pivot it acts; the product measures that turning effect.',
+          steps: [`$M = F \\cdot d = ${load} \\cdot ${num(pivotFromLeft, 2)}$`, `$M = ${num(moment, 2)}$ N·m`],
+          trap: 'Using the whole bar length as the lever arm, or dividing instead of multiplying.',
+          transfer: 'The same product decides whether a crane tips, how a wheelbarrow feels and why a long spanner loosens a tight bolt.',
+        },
+        verification: { solver: 'physics.moment', payload: { force_N: load, arm_m: pivotFromLeft } },
+      },
+      rng,
+    );
+  }
+
+  if (shape === 'advantage') {
+    const loadArm = rng.pick([0.2, 0.25, 0.4, 0.5, 0.6, 0.8, 1]);
+    const ratio = rng.pick([2, 3, 4, 5, 6, 8]);
+    const effortArm = loadArm * ratio;
+    const advantage = effortArm / loadArm;
+    return assemble(
+      {
+        id: makeId('advantage', rng),
+        domainId: 'D07',
+        conceptIds: ['C07.lever'],
+        label: 'PREPARATION_EXTENSION',
+        stem: `A lever has a load arm of ${num(loadArm, 2)} m and an effort arm of ${num(effortArm, 2)} m. What is its mechanical advantage (the factor by which it multiplies the applied effort)?`,
+        figure: { kind: 'lever', loadArm, effortArm, load: 100 },
+        options: [
+          { text: `${num(advantage, 2)}`, errorTag: 'none', rationale: 'Correct: the mechanical advantage is the ratio of the arms, which equals the ratio of the forces.', correct: true },
+          { text: `${num(1 / advantage, 2)}`, errorTag: 'ratio_error', rationale: 'The ratio was inverted; this value would describe a lever that makes the work *harder*.' },
+          { text: `${num(advantage * advantage, 2)}`, errorTag: 'linearity_assumption', rationale: 'The ratio was squared, as if both arms were multiplied instead of related by a single ratio.' },
+          { text: `${num((loadArm + effortArm) / 2, 2)}`, errorTag: 'concept_confusion', rationale: 'The arms were averaged; an average of metres cannot be the dimensionless factor that multiplies a force.' },
+        ],
+        difficulty: 2,
+        reasoningType: 'conceptual_discrimination',
+        cognitiveMove: 'general_case',
+        style: 'numeric_direct',
+        hints: ['Mechanical advantage compares how far you push with how far the load moves — that is the ratio of the arms.', 'It is a pure number with no unit.'],
+        explanation: {
+          testing: 'The mechanical advantage of a lever as a ratio, and its unitlessness.',
+          matters: `Both arm lengths (${num(loadArm, 2)} m and ${num(effortArm, 2)} m).`,
+          concept: 'Mechanical advantage: $MA = \\dfrac{\\text{effort arm}}{\\text{load arm}} = \\dfrac{\\text{load}}{\\text{effort}}$.',
+          why: 'Energy is conserved, so a longer effort arm means a smaller force over a longer path; the ratio of the arms fixes that factor.',
+          steps: [`$MA = ${num(effortArm, 2)} / ${num(loadArm, 2)}$`, `$MA = ${num(advantage, 2)}$ — pushing ${num(advantage, 2)} times as hard as the load per unit of force applied`],
+          trap: 'Inverting the ratio (which would describe a lever that makes the task harder) or reporting an average of the two arm lengths.',
+          transfer: 'The same ratio describes pulley systems, gear trains and hydraulic presses: in every case the force multiple mirrors a distance penalty.',
+        },
+        verification: { solver: 'physics.mechanical_advantage', payload: { loadArm_m: loadArm, effortArm_m: effortArm } },
+      },
+      rng,
+    );
+  }
+
+  const load = rng.pick([80, 100, 120, 150, 200, 240, 250, 300, 360, 400, 450, 500, 600, 750, 900]);
+  const loadArm = rng.pick([0.4, 0.5, 0.6, 0.8, 1, 1.2, 1.5, 1.8, 2, 2.5]);
+  // ratio 2 is excluded: the "extra length" distractor (ratio − 1) would then equal the load arm.
+  const ratio = rng.pick([3, 4, 5, 6, 8]);
+  const effortArm = loadArm * ratio;
   const effort = (load * loadArm) / effortArm;
+  const shortArm = (loadArm * (load - effort)) / effort;
   return assemble(
     {
       id: makeId('lever', rng),
       domainId: 'D07',
-      conceptIds: ['C07.moment'],
+      conceptIds: ['C07.moment', 'C07.lever'],
       label: 'PREPARATION_EXTENSION',
       stem: `A uniform bar of negligible mass rests on a pivot. A load of ${load} N acts at a distance of ${num(loadArm, 2)} m from the pivot. At what distance from the pivot must a downward effort of ${num(effort, 2)} N be applied to keep the bar horizontal?`,
       figure: { kind: 'lever', loadArm, effortArm, load },
       options: [
         { text: `${num(effortArm, 2)} m`, errorTag: 'none', rationale: 'Correct: the moments must balance, so the smaller force needs the longer arm.', correct: true },
-        { text: `${num(loadArm, 2)} m`, errorTag: 'concept_confusion', rationale: 'Equal arms would only balance equal forces.' },
-        { text: `${num(loadArm + (loadArm * (load - effort)) / effort, 2)} m`, errorTag: 'linearity_assumption', rationale: 'The required *additional* length was added instead of scaling the whole arm by the force ratio.' },
-        { text: `${num(loadArm / (load / effort), 2)} m`, errorTag: 'ratio_error', rationale: 'The force ratio was applied in the wrong direction; the smaller effort needs the *longer* arm.' },
+        { text: `${num(loadArm, 2)} m`, errorTag: 'concept_confusion', rationale: 'Equal arms would only balance equal forces; here the effort is the smaller force.' },
+        { text: `${num(shortArm, 2)} m`, errorTag: 'linearity_assumption', rationale: 'The *additional* length beyond the load arm was computed instead of the total arm from the pivot.' },
+        { text: `${num((loadArm * effort) / load, 2)} m`, errorTag: 'ratio_error', rationale: 'The force ratio was applied in the wrong direction; a smaller effort needs the longer arm.' },
       ],
       difficulty: 3,
-      reasoningType: 'rule_application',
+      reasoningType: 'multi_step_application',
       cognitiveMove: 'execute_rule',
       style: 'numeric_direct',
       hints: ['Balance the moments: force × arm must be equal on both sides.', 'A smaller force needs a proportionally longer arm.'],
       explanation: {
         testing: 'Applying the moment balance and using the inverse relation between force and arm length.',
         matters: `The load (${load} N) and its arm (${num(loadArm, 2)} m).`,
-        concept: 'Equilibrium of moments: F₁·a₁ = F₂·a₂.',
+        concept: 'Equilibrium of moments: $F_1 a_1 = F_2 a_2$.',
         why: 'A moment measures the turning effect of a force; equilibrium requires equal turning effects in opposite directions.',
         steps: [`Moment of the load: $${load} \\cdot ${num(loadArm, 2)} = ${num(load * loadArm, 0)}$ N·m`, `Required arm: $${num(load * loadArm, 0)}/${num(effort, 2)} = ${num(effortArm, 2)}$ m`],
         trap: 'Setting the forces equal instead of the moments, which ignores the whole point of a lever.',
         transfer: 'The same balance explains wheelbarrows, crowbars, crane counterweights and the stability item in the official hydrostatics exercise.',
       },
-      verification: { solver: 'physics.lever', payload: { load_N: load, loadArm, effortArm } },
+      // The question asks for the *arm*, so it must be checked by the solver that solves for the
+      // arm. (Handing the arm to the force-solver rejected every draw of this shape.)
+      verification: { solver: 'physics.lever_arm', payload: { load_N: load, loadArm_m: loadArm, effort_N: effort } },
+    },
+    rng,
+  );
+}
+
+/**
+ * Pressure from force and area, and the reverse — the concept the official hydrostatics exercise
+ * assumes (the force on a surface is the pressure multiplied by the area it acts on).
+ */
+export function genForcePressure(rng: Rng): Question {
+  const force = rng.pick([40, 60, 120, 240, 480, 600, 900, 1200, 1500, 2400]);
+  const area = rng.pick([0.005, 0.01, 0.02, 0.04, 0.05, 0.1, 0.2, 0.25, 0.5]);
+  const areaCm2 = Math.round(area * 10000);
+  const shape = rng.pick(['pressure', 'force'] as const);
+
+  if (shape === 'force') {
+    const pressureBar = rng.pick([0.5, 1, 1.5, 2, 2.5, 3, 4]);
+    const pressurePa = pressureBar * 100000;
+    const resultingForce = pressurePa * area;
+    const kN = resultingForce / 1000;
+    return assemble(
+      {
+        id: makeId('forcept', rng),
+        domainId: 'D05',
+        conceptIds: ['C05.force'],
+        label: 'PREREQUISITE',
+        stem: `A flat plate of area ${num(area, 3)} m² is exposed to a uniform pressure of ${num(pressureBar, 2)} bar. What force does the pressure exert on the plate, in kN? (1 bar = ${num(100000, 0)} Pa = ${num(100000, 0)} N/m²)`,
+        options: [
+          { text: `${num(kN, 2)} kN`, errorTag: 'none', rationale: 'Correct: force is pressure multiplied by area, with the pressure converted to N/m² first.', correct: true },
+          { text: `${num(resultingForce, 2)} kN`, errorTag: 'unit_conversion', rationale: 'The force in newtons was reported as kilonewtons, so the answer is 1000 times too large.' },
+          { text: `${num(pressureBar / area / 1000, 4)} kN`, errorTag: 'ratio_error', rationale: 'The pressure was divided by the area; pressure × area gives force, not pressure ÷ area.' },
+          { text: `${num(kN / 10, 2)} kN`, errorTag: 'unit_conversion', rationale: '1 bar is 100 000 Pa, not 10 000 Pa; the centimetre-to-metre factor was applied to the area a second time.' },
+        ],
+        difficulty: 3,
+        reasoningType: 'multi_step_application',
+        cognitiveMove: 'execute_rule',
+        style: 'numeric_direct',
+        hints: ['Convert bar into N/m² first: 1 bar = 100 000 Pa.', 'Then force = pressure × area; divide by 1000 to express the result in kN.'],
+        explanation: {
+          testing: 'The relation between force, pressure and area, combined with a unit conversion.',
+          matters: `The pressure (${num(pressureBar, 2)} bar) and the area (${num(area, 3)} m²).`,
+          concept: 'Pressure is force per unit area, so $F = p \\cdot A$.',
+          why: 'Pressure is defined as the force spread over an area; multiplying back by the area recovers the total force.',
+          steps: [
+            `$p = ${num(pressureBar, 2)} \\cdot 100\\,000 = ${num(pressurePa, 0)}$ N/m²`,
+            `$F = p \\cdot A = ${num(pressurePa, 0)} \\cdot ${num(area, 3)} = ${num(resultingForce, 0)}$ N`,
+            `$F = ${num(kN, 2)}$ kN`,
+          ],
+          trap: 'Forgetting that bar must be converted to N/m², or losing the factor 1000 between N and kN.',
+          transfer: 'The same product gives the force on a dam wall, the load a hydraulic press can raise and the thrust a tyre exerts on the road.',
+        },
+        verification: { solver: 'physics.force_from_pressure', payload: { pressure_bar: pressureBar, area_m2: area } },
+      },
+      rng,
+    );
+  }
+
+  const pressurePa = force / area;
+  const pressureKPa = pressurePa / 1000;
+  const pressureBar = pressurePa / 100000;
+  return assemble(
+    {
+      id: makeId('press', rng),
+      domainId: 'D05',
+      conceptIds: ['C05.force'],
+      label: 'PREREQUISITE',
+      stem: `A force of ${num(force, 0)} N acts uniformly on a surface of ${num(areaCm2, 0)} cm². What pressure does it produce?`,
+      options: [
+        { text: `${num(pressureKPa, 2)} kPa`, errorTag: 'none', rationale: 'Correct: the area is converted to m² and the force is divided by it.', correct: true },
+        { text: `${num(force / areaCm2, 4)} kPa`, errorTag: 'unit_conversion', rationale: 'The area in cm² was used without converting to m², so the result is 10 000 times too large.' },
+        { text: `${num(force * area, 2)} kPa`, errorTag: 'ratio_error', rationale: 'The area was multiplied instead of divided; pressure falls as the area grows.' },
+        { text: `${num(pressureBar, 4)} kPa`, errorTag: 'unit_conversion', rationale: 'The value in bar was labelled kPa: 1 bar is 100 kPa, so the two units differ by a factor of 100.' },
+      ],
+      difficulty: 2,
+      reasoningType: 'rule_application',
+      cognitiveMove: 'execute_rule',
+      style: 'numeric_direct',
+      hints: ['Pressure = force ÷ area.', 'Convert cm² into m² first: 1 m² = 10 000 cm².'],
+      explanation: {
+        testing: 'Computing pressure and handling an area given in cm².',
+        matters: `The force (${num(force, 0)} N) and the area (${num(areaCm2, 0)} cm² = ${num(area, 4)} m²).`,
+        concept: '$p = F / A$, with consistent units.',
+        why: 'The same force concentrated on a smaller area produces a larger pressure — the reason a nail works and a knife edge cuts.',
+        steps: [`$A = ${num(areaCm2, 0)} \\text{cm}^2 = ${num(area, 4)}\\ \\text{m}^2$`, `$p = ${num(force, 0)} / ${num(area, 4)} = ${num(pressurePa, 0)}$ Pa $= ${num(pressureKPa, 2)}$ kPa`],
+        trap: 'Dividing by the area in cm² — a factor-10 000 error — or multiplying instead of dividing.',
+        transfer: 'The same conversion trap appears in every hydraulics item, and in the official hydrostatics exercise when a depth in metres is turned into a pressure in bar.',
+      },
+      verification: { solver: 'physics.pressure_from_force', payload: { force_N: force, area_m2: area } },
     },
     rng,
   );
@@ -804,48 +993,65 @@ export function genLoopTrace(rng: Rng): Question {
 export function genComplexity(rng: Rng): Question {
   const n = rng.pick([1000, 10000, 100000]);
   const kind = rng.pick(['linear', 'quadratic', 'log', 'nlog'] as const);
-  const table: Record<typeof kind, { name: string; steps: string; why: string; wrong: [string, string][] }> = {
-    linear: { name: 'linear', steps: `${n}`, why: 'A single pass over n items performs n operations.', wrong: [['1 000 000', 'That would be quadratic behaviour — a nested loop.'], ['about 10', 'That would be logarithmic behaviour.'], ['n² = 10¹⁰', 'Squaring the input is quadratic, not linear.']] },
-    quadratic: { name: 'quadratic', steps: `${(n * n).toExponential(1)}`, why: 'A nested loop over n items performs about n² operations.', wrong: [[`${n}`, 'That is linear behaviour — a single pass.'], ['about 17', 'That is logarithmic behaviour.'], [`${(n * n * n).toExponential(1)}`, 'That would require three nested loops (cubic).']] },
-    log: { name: 'logarithmic', steps: `about ${Math.round(Math.log2(n))}`, why: 'Repeated halving needs about log₂(n) steps.', wrong: [[`${n}`, 'Halving does not visit every item — that would be linear.'], [`${(n * n).toExponential(1)}`, 'Quadratic behaviour is far worse than halving.'], ['1', 'A single step would only be possible for tiny inputs.']] },
-    nlog: { name: 'n log n', steps: `${Math.round(n * Math.log2(n)).toExponential(1)}`, why: 'A pass over the data combined with a divide-and-conquer step gives n log n operations.', wrong: [[`${n}`, 'The divide-and-conquer overhead is missing from this figure.'], [`${(n * n).toExponential(1)}`, 'That is the quadratic figure — much worse.'], ['about 17', 'That is the logarithmic factor alone, without the linear pass.']] },
+  const log2n = Math.round(Math.log2(n));
+  const values = {
+    linear: n,
+    quadratic: n * n,
+    log: log2n,
+    nlog: Math.round(n * Math.log2(n)),
   };
-  const t = table[kind];
+  const fmt = (x: number) => (x >= 1e6 ? x.toExponential(1).replace('e+', ' · 10^') : `${x}`);
+  const why: Record<typeof kind, string> = {
+    linear: 'A single pass over n items performs n operations.',
+    quadratic: 'A nested loop over n items performs about n² operations.',
+    log: 'Repeated halving needs about log₂(n) steps.',
+    nlog: 'A pass over the data plus a divide-and-conquer step needs about n log n operations.',
+  };
+  const rationale: Record<typeof kind, string> = {
+    linear: 'That would be the quadratic figure — a nested loop, not a single pass.',
+    quadratic: 'That is the linear figure — a single pass, which is far cheaper than a nested loop.',
+    log: 'That is the linear figure: halving does not visit every item.',
+    nlog: 'That is the linear figure: the divide-and-conquer overhead is missing.',
+  };
+  const names: Record<typeof kind, string> = { linear: 'linear', quadratic: 'quadratic', log: 'logarithmic', nlog: 'linear in n log n' };
+  // Wrong options are the other three growth classes, as numbers. They are guaranteed to be
+  // distinct because the classes differ by more than an order of magnitude for n ≥ 1000 — and the
+  // option texts contain no stray numbers that the ambiguity scan could read as a coincidence.
+  const wrong = (Object.keys(values) as (keyof typeof values)[]).filter((k) => k !== kind);
+  const correct = `${fmt(values[kind])} steps`;
+  const wrongTexts = wrong.map((k) => `${fmt(values[k])} steps`);
+  if (new Set([correct, ...wrongTexts]).size !== 4) return genComplexity(rng);
   return assemble(
     {
       id: makeId('complex', rng),
       domainId: 'D08',
       conceptIds: ['C08.growth'],
       label: 'PREPARATION_EXTENSION',
-      stem: `An algorithm processes a data set of ${n.toLocaleString('en-US').replace(/,/g, ' ')} items. Its running time grows ${t.name === 'logarithmic' ? 'logarithmically' : t.name === 'linear' ? 'linearly' : t.name === 'quadratic' ? 'quadratically' : 'in proportion to n log n'}. Approximately how many basic steps does it perform?`,
+      stem: `An algorithm processes a data set of ${n} items. Its running time grows ${names[kind]}. Approximately how many basic steps does it perform?`,
       options: [
-        { text: `about ${t.steps}`, errorTag: 'none', rationale: `Correct: ${t.why}`, correct: true },
-        { text: `about ${t.wrong[0][0]}`, errorTag: 'linearity_assumption', rationale: t.wrong[0][1] },
-        { text: `about ${t.wrong[1][0]}`, errorTag: 'concept_confusion', rationale: t.wrong[1][1] },
-        { text: `about ${t.wrong[2][0]}`, errorTag: 'rule_misapplication', rationale: t.wrong[2][1] },
+        { text: correct, errorTag: 'none', rationale: `Correct: ${why[kind]}`, correct: true },
+        { text: wrongTexts[0], errorTag: 'linearity_assumption', rationale: rationale[wrong[0] as typeof kind] },
+        { text: wrongTexts[1], errorTag: 'concept_confusion', rationale: rationale[wrong[1] as typeof kind] },
+        { text: wrongTexts[2], errorTag: 'rule_misapplication', rationale: rationale[wrong[2] as typeof kind] },
       ],
       difficulty: 3,
       reasoningType: 'estimation_scaling',
       cognitiveMove: 'effect_of_change',
       style: 'numeric_direct',
-      hints: ['Substitute the size into the growth expression, not the number of items into a sum.', 'log₂(1000) ≈ 10, log₂(10 000) ≈ 13, log₂(100 000) ≈ 17.'],
+      hints: ['Substitute the size into the growth expression rather than guessing a magnitude.', 'log₂(1000) ≈ 10, log₂(10 000) ≈ 13, log₂(100 000) ≈ 17.'],
       explanation: {
         testing: 'Reading a growth class as an arithmetic prediction, with only order-of-magnitude accuracy required.',
         matters: `The size of the input (${n}) and the growth class.`,
         concept: 'Growth classes: constant, logarithmic, linear, n log n, quadratic.',
-        why: 'The growth class, not the constant factor, decides whether an approach remains feasible as data grows — quadratic behaviour becomes impossible long before linear behaviour notices.',
-        steps: [`Growth class: ${t.name}`, `${t.why}`, `Result: about ${t.steps} steps`],
+        why: 'The growth class, not the constant factor, decides whether an approach remains feasible as the data grows — quadratic behaviour becomes impossible long before linear behaviour notices.',
+        steps: [`Growth class: ${names[kind]}`, why[kind], `Result: about ${fmt(values[kind])} steps`],
         trap: 'Confusing the classes (especially linear with quadratic) or forgetting that logarithms grow extremely slowly.',
-        transfer: 'The same reasoning predicts database performance, the feasibility of simulations and why sorting algorithms are preferred over naive comparisons.',
+        transfer: 'The same reasoning predicts database performance, the feasibility of simulations and why sorting is preferred over naive pairwise comparison.',
       },
     },
     rng,
   );
 }
-
-/* ================================================================== */
-/* D10 — economics fundamentals                                       */
-/* ================================================================== */
 
 export function genBreakEven(rng: Rng): Question {
   const fixed = rng.pick([2000, 4000, 5000, 8000, 10000, 20000]);

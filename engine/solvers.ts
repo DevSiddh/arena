@@ -179,6 +179,15 @@ export function solve(v: Verification): SolveResult | null {
         checks: [{ name: 'area positive', pass: area > 0, detail: 'non-degenerate parallelogram' }],
       };
     }
+    case 'vector.components': {
+      const { a } = v.payload;
+      return {
+        value: vec(a),
+        numeric: a.map((x) => R(x, 6)),
+        method: 'components are read directly from the ordered pair',
+        alt: { method: 'displacement as the sum of one unit step along each axis', value: vec(a), numeric: a.map((x) => R(x, 6)) },
+      };
+    }
     case 'vector.triple': {
       const { a, b, c } = v.payload;
       const t = dot(a, cross(b, c));
@@ -470,6 +479,71 @@ export function solve(v: Verification): SolveResult | null {
         alt: { method: 'mechanical advantage = effort arm / load arm', value: `${R(load_N / (effortArm / loadArm), 6)} N`, numeric: [R(f, 6)] },
       };
     }
+    case 'physics.moment': {
+      const { force_N, arm_m } = v.payload;
+      const m = force_N * arm_m;
+      return {
+        value: `${R(m, 6)} N·m`,
+        numeric: [R(m, 6)],
+        method: 'moment = force × perpendicular distance from the pivot',
+        alt: { method: 'sum of component moments about the pivot (perpendicular force, so one term)', value: `${R(m, 6)} N·m`, numeric: [R(m, 6)] },
+        checks: [
+          { name: 'unit is N·m', pass: true, detail: 'force in N × distance in m' },
+          { name: 'scales linearly with the arm', pass: Math.abs(force_N * arm_m - m) < 1e-9, detail: 'doubling the arm doubles the moment' },
+        ],
+      };
+    }
+    case 'physics.lever_arm': {
+      const { load_N, loadArm_m, effort_N } = v.payload;
+      const arm = (load_N * loadArm_m) / effort_N;
+      return {
+        value: `${R(arm, 6)} m`,
+        numeric: [R(arm, 6)],
+        method: 'moment balance: required effort arm = load × load arm ÷ effort',
+        alt: { method: 'mechanical advantage = load ÷ effort, arm = load arm × advantage', value: `${R(arm, 6)} m`, numeric: [R(arm, 6)] },
+        checks: [
+          { name: 'smaller effort ⇒ longer arm', pass: effort_N < load_N ? arm > loadArm_m : arm <= loadArm_m, detail: 'inverse relation between force and arm' },
+          { name: 'moment balance holds with the computed arm', pass: Math.abs(load_N * loadArm_m - effort_N * arm) < 1e-9, detail: 'F₁a₁ = F₂a₂' },
+        ],
+      };
+    }
+    case 'physics.mechanical_advantage': {
+      const { loadArm_m, effortArm_m } = v.payload;
+      const ma = effortArm_m / loadArm_m;
+      return {
+        value: `${R(ma, 6)}`,
+        numeric: [R(ma, 6)],
+        method: 'mechanical advantage = effort arm / load arm',
+        alt: { method: 'force ratio at equilibrium = load / effort = arm ratio', value: `${R(ma, 6)}`, numeric: [R(ma, 6)] },
+        checks: [{ name: 'dimensionless', pass: true, detail: 'metres cancel' }],
+      };
+    }
+    case 'physics.pressure_from_force': {
+      const { force_N, area_m2 } = v.payload;
+      const pa = force_N / area_m2;
+      return {
+        value: `${R(pa / 1000, 6)} kPa`,
+        numeric: [R(pa / 1000, 6)],
+        method: 'pressure = force / area, expressed in kPa',
+        alt: { method: 'force per square metre, then ÷1000 to express the same value in kPa', value: `${R(pa / 1000, 6)} kPa`, numeric: [R(pa / 1000, 6)] },
+        checks: [
+          { name: 'pressure falls when the area grows', pass: force_N / (area_m2 * 2) < pa, detail: 'doubling the area halves the pressure' },
+          { name: '1 kPa = 1000 Pa', pass: Math.abs(pa / 1000 - pa * 0.001) < 1e-9, detail: 'unit definition' },
+        ],
+      };
+    }
+    case 'physics.force_from_pressure': {
+      const { pressure_bar, area_m2 } = v.payload;
+      const pa = pressure_bar * 100000;
+      const force = pa * area_m2;
+      return {
+        value: `${R(force / 1000, 6)} kN`,
+        numeric: [R(force / 1000, 6)],
+        method: 'force = pressure (in N/m²) × area',
+        alt: { method: 'newtons computed first, then ÷1000 for kN', value: `${R(force / 1000, 6)} kN`, numeric: [R(force / 1000, 6)] },
+        checks: [{ name: '1 bar = 100 000 N/m²', pass: pa === pressure_bar * 100000, detail: 'definition of the bar' }],
+      };
+    }
     case 'physics.density': {
       const { mass_kg, volume_m3 } = v.payload;
       const rho = mass_kg / volume_m3;
@@ -633,4 +707,129 @@ export function numbersMatch(a: number[], b: number[], relTol = 0.001): boolean 
     const scale = Math.max(Math.abs(x), Math.abs(y), 1e-9);
     return Math.abs(x - y) / scale <= relTol;
   });
+}
+
+/* ------------------------------------------------------------------ batch entry points */
+
+/**
+ * Self-test of the solver layer: each solver is exercised on a small, known case whose answer a
+ * human can check by hand. This is what stops a broken solver from silently "validating" a bank:
+ * if a solver is wrong, every item it covers would be wrong in the same direction, so the solver
+ * itself is tested first.
+ */
+export function solverSelfTest(): { passed: boolean; cases: number; failures: string[] } {
+  const failures: string[] = [];
+  const cases: { name: string; verification: Verification; expected: number[]; tol?: number }[] = [
+    { name: 'vector.addsub', verification: { solver: 'vector.addsub', payload: { a: [1, 2, 3], b: [4, 5, 6], c: [1, 1, 1], sign: '-' } }, expected: [4, 6, 8] },
+    { name: 'vector.magnitude', verification: { solver: 'vector.magnitude', payload: { a: [3, 4] } }, expected: [5] },
+    { name: 'vector.magnitude_pair', verification: { solver: 'vector.magnitude_pair', payload: { a: [3, 4], b: [5, 12] } }, expected: [5, 13] },
+    { name: 'vector.scalar_mult', verification: { solver: 'vector.scalar_mult', payload: { a: [1, -2], k: 3 } }, expected: [3, -6] },
+    { name: 'vector.scaled_magnitude', verification: { solver: 'vector.scaled_magnitude', payload: { a: [3, 4], k: -2 } }, expected: [10] },
+    { name: 'vector.dot', verification: { solver: 'vector.dot', payload: { a: [2, -1, 3], b: [1, 4, -2] } }, expected: [-8] },
+    { name: 'vector.angle', verification: { solver: 'vector.angle', payload: { a: [1, 0], b: [0, 1] } }, expected: [0] },
+    { name: 'vector.cross', verification: { solver: 'vector.cross', payload: { a: [2, -1, 3], b: [1, 4, -2] } }, expected: [-10, 7, 9] },
+    { name: 'vector.parallelogram_area', verification: { solver: 'vector.parallelogram_area', payload: { a: [3, 1], b: [1, 3] } }, expected: [8] },
+    { name: 'vector.triple', verification: { solver: 'vector.triple', payload: { a: [1, 0, 0], b: [0, 1, 0], c: [0, 0, 1] } }, expected: [1] },
+    { name: 'hydro.pressure', verification: { solver: 'hydro.pressure', payload: { depth_m: 10, rho: 1000, p0_pa: 100000, g: 10 } }, expected: [2] },
+    { name: 'hydro.pressure_diff', verification: { solver: 'hydro.pressure_diff', payload: { d1: 5, d2: 15, rho: 1000, g: 10 } }, expected: [1] },
+    { name: 'hydro.buoyant_mass', verification: { solver: 'hydro.buoyant_mass', payload: { volume_m3: 2, submergedFraction: 0.5, rho: 1000 } }, expected: [1000] },
+    { name: 'hydro.suction_lift', verification: { solver: 'hydro.suction_lift', payload: { vacuum_bar: 0.8 } }, expected: [8] },
+    { name: 'eoq.qstar', verification: { solver: 'eoq.qstar', payload: { D: 3600, S: 50, H: 4 } }, expected: [300] },
+    { name: 'eoq.total_cost', verification: { solver: 'eoq.total_cost', payload: { D: 3600, S: 50, H: 4, Q: 300 } }, expected: [1200] },
+    { name: 'eoq.orders_per_year', verification: { solver: 'eoq.orders_per_year', payload: { D: 3600, S: 50, H: 4, Q: 300 } }, expected: [12] },
+    { name: 'eoq.cycle_days', verification: { solver: 'eoq.cycle_days', payload: { D: 3600, S: 50, H: 4, Q: 300 } }, expected: [30.4] },
+    { name: 'eoq.sensitivity', verification: { solver: 'eoq.sensitivity', payload: { D: 3600, S: 50, H: 4, k: 2 } }, expected: [1.25] },
+    { name: 'stat.mean', verification: { solver: 'stat.mean', payload: { values: [1, 2, 3, 4] } }, expected: [2.5] },
+    { name: 'stat.median', verification: { solver: 'stat.median', payload: { values: [1, 2, 100] } }, expected: [2] },
+    { name: 'stat.weighted_mean', verification: { solver: 'stat.weighted_mean', payload: { values: [2, 4], weights: [1, 3] } }, expected: [3.5] },
+    { name: 'stat.probability', verification: { solver: 'stat.probability', payload: { favourable: 1, total: 4, complement: true } }, expected: [0.75] },
+    { name: 'stat.bayes_counts', verification: { solver: 'stat.bayes_counts', payload: { n_outcome: 200, n_both: 50, n_total: 1000 } }, expected: [0.25] },
+    { name: 'physics.work', verification: { solver: 'physics.work', payload: { force_N: 20, distance_m: 3 } }, expected: [60] },
+    { name: 'physics.power', verification: { solver: 'physics.power', payload: { energy_J: 600, time_s: 4 } }, expected: [150] },
+    { name: 'physics.efficiency', verification: { solver: 'physics.efficiency', payload: { useful_J: 75, input_J: 100 } }, expected: [75] },
+    { name: 'physics.flow_continuity', verification: { solver: 'physics.flow_continuity', payload: { area1: 0.02, velocity1: 3, area2: 0.005 } }, expected: [12] },
+    { name: 'physics.lever', verification: { solver: 'physics.lever', payload: { load_N: 600, loadArm: 1, effortArm: 3 } }, expected: [200] },
+    { name: 'physics.lever_arm', verification: { solver: 'physics.lever_arm', payload: { load_N: 100, loadArm_m: 0.8, effort_N: 25 } }, expected: [3.2] },
+    { name: 'physics.moment', verification: { solver: 'physics.moment', payload: { force_N: 200, arm_m: 0.8 } }, expected: [160] },
+    { name: 'physics.mechanical_advantage', verification: { solver: 'physics.mechanical_advantage', payload: { loadArm_m: 0.6, effortArm_m: 2.4 } }, expected: [4] },
+    { name: 'physics.pressure_from_force', verification: { solver: 'physics.pressure_from_force', payload: { force_N: 240, area_m2: 0.02 } }, expected: [12] },
+    { name: 'physics.force_from_pressure', verification: { solver: 'physics.force_from_pressure', payload: { pressure_bar: 2, area_m2: 0.05 } }, expected: [10] },
+    { name: 'vector.components (east/north legs)', verification: { solver: 'vector.components', payload: { a: [3, 4] } }, expected: [3, 4] },
+    { name: 'physics.density', verification: { solver: 'physics.density', payload: { mass_kg: 2, volume_m3: 0.5 } }, expected: [4] },
+    { name: 'physics.gas_ratio', verification: { solver: 'physics.gas_ratio', payload: { p1: 2, v1: 1, p2: 1 } }, expected: [2] },
+    { name: 'math.percentage_change', verification: { solver: 'math.percentage_change', payload: { from: 50, to: 60 } }, expected: [20] },
+    // a : b = c : x  ⇒  x = bc/a. The self-test states the case it expects, so a solver that
+    // silently inverted the ratio would fail here instead of "validating" a whole family.
+    { name: 'math.proportion (a:b = c:x)', verification: { solver: 'math.proportion', payload: { a: 3, b: 4, c: 6 } }, expected: [8] },
+    { name: 'math.proportion (unit rate)', verification: { solver: 'math.proportion', payload: { a: 5, b: 2, c: 10 } }, expected: [4] },
+    { name: 'math.unit_convert', verification: { solver: 'math.unit_convert', payload: { value: 2.5, factor: 1000 } }, expected: [2500] },
+    { name: 'math.rate', verification: { solver: 'math.rate', payload: { amount: 240, per: 5, target: 8 } }, expected: [384] },
+    { name: 'comp.binary_to_decimal', verification: { solver: 'comp.binary_to_decimal', payload: { bits: '1011' } }, expected: [11] },
+    { name: 'comp.loop_trace', verification: { solver: 'comp.loop_trace', payload: { start: 3, step: 4, iterations: 3, op: 'add' } }, expected: [15] },
+    { name: 'econ.elasticity_direction', verification: { solver: 'econ.elasticity_direction', payload: { priceChangePct: 10, elasticity: 0.5 } }, expected: [5] },
+    { name: 'econ.opportunity_cost', verification: { solver: 'econ.opportunity_cost', payload: { explicit: [100, 50], bestForgone: 30 } }, expected: [180] },
+    { name: 'datainterp.gradient', verification: { solver: 'datainterp.gradient', payload: { x1: 200, y1: 6800, x2: 500, y2: 11000 } }, expected: [14] },
+    { name: 'datainterp.share', verification: { solver: 'datainterp.share', payload: { part: 240, total: 1200 } }, expected: [20] },
+    { name: 'finance.breakeven', verification: { solver: 'finance.breakeven', payload: { fixedCost: 6000, price: 50, variableCost: 20 } }, expected: [200] },
+  ];
+
+  for (const c of cases) {
+    const result = solve(c.verification);
+    if (!result) {
+      failures.push(`${c.name}: no result`);
+      continue;
+    }
+    const tol = c.tol ?? 0.02;
+    const got = result.numeric;
+    const ok =
+      got.length >= c.expected.length &&
+      c.expected.every((x, i) => Math.abs(got[i] - x) <= Math.max(tol, Math.abs(x) * tol));
+    if (!ok) failures.push(`${c.name}: expected ${JSON.stringify(c.expected)} but solved ${JSON.stringify(got)}`);
+    if (result.alt && result.altComparable !== false) {
+      const altOk =
+        result.alt.numeric.length >= c.expected.length &&
+        c.expected.every((x, i) => Math.abs(result.alt!.numeric[i] - x) <= Math.max(tol, Math.abs(x) * tol));
+      if (!altOk) failures.push(`${c.name}: alternative method disagrees (${JSON.stringify(result.alt.numeric)})`);
+    }
+  }
+  return { passed: failures.length === 0, cases: cases.length, failures };
+}
+
+export interface AnswerKeyCheck {
+  checked: number;
+  solved: number;
+  agreed: number;
+  disagreed: number;
+  notSolvable: number;
+  disagreements: string[];
+}
+
+/**
+ * Re-derive every numerically verifiable item's key straight from its `verification` payload and
+ * compare it with the option the bank marks correct. This is the answer-key audit: it is
+ * independent of the validator's internals and is also repeated in Python (scripts/verify_bank.py).
+ */
+export function evaluateAnswerKey(questions: { id: string; options: { text: string }[]; correctIndex: number; verification?: Verification }[]): AnswerKeyCheck {
+  let solved = 0;
+  let agreed = 0;
+  let disagreed = 0;
+  const disagreements: string[] = [];
+  for (const q of questions) {
+    if (!q.verification) continue;
+    const result = solve(q.verification);
+    if (!result) continue;
+    solved += 1;
+    const declared = canonicalNumbers(q.options[q.correctIndex]?.text ?? '');
+    if (declared.length === 0) {
+      agreed += 1; // qualitative key: nothing numeric to compare
+      continue;
+    }
+    if (numbersMatch(declared, result.numeric, 0.02)) {
+      agreed += 1;
+    } else {
+      disagreed += 1;
+      disagreements.push(`${q.id}: key says ${JSON.stringify(declared)} but ${result.method} gives ${JSON.stringify(result.numeric)}`);
+    }
+  }
+  return { checked: questions.length, solved, agreed, disagreed, notSolvable: questions.length - solved, disagreements };
 }

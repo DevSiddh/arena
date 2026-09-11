@@ -1,16 +1,3 @@
-import { makeRng } from './rng';
-import type { Bank, Lesson, Question } from './types';
-import { buildAndValidate, formatReport, attachStimuli, type BuildReport } from './validators';
-import { STIMULI } from './authored/stimuli';
-import { METHODOLOGY_AUTHORED } from './authored/methodology';
-import { ARGUMENT_AUTHORED, EXPERIMENT_AUTHORED, SCIENTIFIC_AUTHORED } from './authored/reasoning';
-import { EOQ_CONCEPTUAL, HYDRO_CONCEPTUAL, MISC_CONCEPTUAL, VECTOR_CONCEPTUAL } from './authored/conceptual';
-import { ADVANCED_AUTHORED } from './authored/advanced';
-import * as V from './generators/vector';
-import * as H from './generators/hydro';
-import * as E from './generators/eoq';
-import * as M from './generators/misc';
-
 /**
  * Bank assembly.
  *
@@ -19,11 +6,28 @@ import * as M from './generators/misc';
  *   2. authored conceptual items (critique, statement, judgement),
  *   3. authored methodology/reasoning items (the verbal domains).
  *
- * Every candidate passes the independent validator; failures are retried with fresh random
- * values where the defect is regenerable, and otherwise reported.
+ * Every candidate passes the independent validator (`validators.ts`): structure, ambiguity,
+ * distractors that cannot be the answer, duplicate detection, and — for numeric items — a
+ * re-computation of the key by a solver that never saw the options. Candidates that fail for a
+ * reason the generator can fix (two options that came out numerically equal) are regenerated with
+ * a fresh seed and the retry is counted in the build report.
  */
 
-export type Family = { name: string; fn: (rng: ReturnType<typeof makeRng>) => Question };
+import { makeRng, type Rng } from './rng';
+import type { Bank, Lesson, Question } from './types';
+import { buildAndValidate, formatReport, attachStimuli, type BuildReport } from './validators';
+import { STIMULI } from './authored/stimuli';
+import { METHODOLOGY_AUTHORED } from './authored/methodology';
+import { ARGUMENT_AUTHORED, EXPERIMENT_AUTHORED, SCIENTIFIC_AUTHORED } from './authored/reasoning';
+import { EOQ_CONCEPTUAL, HYDRO_CONCEPTUAL, MISC_CONCEPTUAL, VECTOR_CONCEPTUAL } from './authored/conceptual';
+import { ADVANCED_AUTHORED } from './authored/advanced';
+import { COVERAGE_AUTHORED } from './authored/coverage';
+import * as V from './generators/vector';
+import * as H from './generators/hydro';
+import * as E from './generators/eoq';
+import * as M from './generators/misc';
+
+export type Family = { name: string; fn: (rng: Rng) => Question };
 
 export const FAMILIES: Family[] = [
   { name: 'vector/add-sub', fn: V.genVectorAddSub },
@@ -36,6 +40,7 @@ export const FAMILIES: Family[] = [
   { name: 'vector/triple', fn: V.genTripleProduct },
   { name: 'vector/effect', fn: V.genVectorEffect },
   { name: 'vector/result-type', fn: V.genResultType },
+  { name: 'vector/components', fn: V.genVectorComponents },
   { name: 'hydro/pressure-depth', fn: H.genPressureAtDepth },
   { name: 'hydro/pressure-compare', fn: H.genPressureComparison },
   { name: 'hydro/buoyancy-mass', fn: H.genBuoyancyMass },
@@ -66,6 +71,7 @@ export const FAMILIES: Family[] = [
   { name: 'physics/efficiency', fn: M.genEfficiency },
   { name: 'physics/gas', fn: M.genGasLaw },
   { name: 'engineering/lever', fn: M.genLever },
+  { name: 'physics/force-pressure', fn: M.genForcePressure },
   { name: 'engineering/flow', fn: M.genFlowContinuity },
   { name: 'computing/binary', fn: M.genBinary },
   { name: 'computing/loop', fn: M.genLoopTrace },
@@ -78,6 +84,7 @@ export const FAMILIES: Family[] = [
 
 export const AUTHORED: Question[] = [
   ...ADVANCED_AUTHORED,
+  ...COVERAGE_AUTHORED,
   ...METHODOLOGY_AUTHORED,
   ...SCIENTIFIC_AUTHORED,
   ...EXPERIMENT_AUTHORED,
@@ -170,6 +177,7 @@ export function buildBank(options: BuildOptions = {}): { bank: Bank; report: Bui
     if (block) q.stimulusId = block;
     else delete q.stimulusId;
   }
+
   const bank: Bank = {
     questions: report.questions,
     stimuli,
