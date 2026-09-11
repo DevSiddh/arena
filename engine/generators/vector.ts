@@ -566,7 +566,7 @@ export function genAngle(rng: Rng): Question {
     explanation: {
       testing: 'Rearranging the geometric form of the scalar product to obtain an angle, and keeping the answer in exact arccos form.',
       matters: `The scalar product (${dot}) and both lengths (${num(na, 4)} and ${num(nb, 4)}).`,
-      concept: 'Angle between two vectors via the scalar product.',
+      concept: 'Angle between two vectors, obtained from the scalar product and both lengths.',
       why: 'The scalar product mixes length and direction; dividing out both lengths leaves exactly the cosine of the enclosed angle.',
       steps: [
         `$\\vec{a}\\cdot\\vec{b} = ${sa.map((x, i) => `(${x})(${sb[i]})`).join(' + ')} = ${dot}$`,
@@ -684,24 +684,18 @@ export function genParallelogramArea(rng: Rng): Question {
             yRange: [-6, 6],
           }
         : undefined,
-    options: [
-      { text: `$${det}$ square units`, errorTag: 'none', rationale: 'Correct: the area is the absolute value of the 2×2 determinant (the z = 0 case of $|\\vec{a}\\times\\vec{b}|$).', correct: true },
-      {
-        text: `$${Math.abs(dotV)}$ square units`,
-        errorTag: 'concept_confusion',
-        rationale: `This is the absolute scalar product ($${Math.abs(dotV)}$), which measures alignment, not area.`,
-      },
-      {
-        text: `$${num(det / 2, 4)}$ square units`,
-        errorTag: 'rule_misapplication',
-        rationale: 'Halving the determinant gives the area of the *triangle* enclosed by the two vectors, not of the parallelogram.',
-      },
-      {
-        text: `$${num(lenProduct, 4)}$ square units`,
-        errorTag: 'rule_misapplication',
-        rationale: `This is the product of the two lengths ($${num(lenProduct, 4)}$), which is the area only if the vectors are perpendicular.`,
-      },
-    ],
+    options: (() => {
+      const pool: Opt[] = [
+        { text: `$${Math.abs(dotV)}$ square units`, errorTag: 'concept_confusion', rationale: `This is the absolute scalar product ($${Math.abs(dotV)}$), which measures alignment, not area.` },
+        { text: `$${num(det / 2, 4)}$ square units`, errorTag: 'rule_misapplication', rationale: 'Halving the determinant gives the area of the *triangle* enclosed by the two vectors, not of the parallelogram.' },
+        { text: `$${num(lenProduct, 4)}$ square units`, errorTag: 'rule_misapplication', rationale: `This is the product of the two lengths ($${num(lenProduct, 4)}$), which is the area only if the vectors are perpendicular.` },
+        { text: `$${num(det * 2, 4)}$ square units`, errorTag: 'calculation_slip', rationale: 'The determinant was doubled; the parallelogram area equals the determinant exactly once.' },
+        { text: `$${Math.abs(a[0] * b[0] - a[1] * b[1])}$ square units`, errorTag: 'component_confusion', rationale: 'The components were paired in the wrong order, which computes a different expression.' },
+      ];
+      const picked = distinctOpts(pool, [`$${det}$ square units`], 3);
+      if (picked.length < 3) throw new Error('genParallelogramArea: not enough distinct distractors');
+      return [...picked, { text: `$${det}$ square units`, errorTag: 'none' as const, rationale: 'Correct: the area is the absolute value of the 2×2 determinant (the z = 0 case of $|\\vec{a}\\times\\vec{b}|$).', correct: true }];
+    })(),
     difficulty: style === 'graph_choice' ? 3 : 3,
     reasoningType: 'multi_step_application',
     cognitiveMove: style === 'graph_choice' ? 'interpret_representation' : 'execute_rule',
@@ -773,7 +767,7 @@ export function genTripleProduct(rng: Rng): Question {
         explanation: {
           testing: 'Executing a two-stage combination of products and respecting the order of operations.',
           matters: 'The order of the three vectors inside the triple product; swapping two of them changes the sign.',
-          concept: 'Triple product $= \\vec{a}\\cdot(\\vec{b}\\times\\vec{c})$, the spanned volume.',
+          concept: 'Triple product = a·(b×c), the signed volume spanned by the three vectors.',
           why: 'The inner vector product produces a vector perpendicular to $\\vec{b}$ and $\\vec{c}$; projecting $\\vec{a}$ onto it measures how far $\\vec{a}$ leaves the plane of the other two.',
           steps: [
             `$\\vec{b}\\times\\vec{c} = ${vecText(cx)}$`,
@@ -1107,7 +1101,7 @@ export function genResultType(rng: Rng): Question {
         explanation: {
           testing: 'Knowing what type of object each operation produces, which decides what further operations are possible.',
           matters: 'The final step of each definition.',
-          concept: 'Types: scalar·scalar, vector·vector (two definitions), and the built-in combination.',
+          concept: 'Result types: scalar product → scalar, vector product → vector, triple product → scalar.',
           why: 'The scalar product sums products of numbers; the vector product builds a new direction; the triple product ends with a scalar product.',
           steps: [
             'Scalar product: $a_xb_x + a_yb_y + a_zb_z$ — one number.',

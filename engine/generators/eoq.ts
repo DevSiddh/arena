@@ -1,6 +1,6 @@
 import type { Rng } from '../rng';
 import type { Question } from '../types';
-import { assemble, num, SCENARIOS, type GenSpec } from './helpers';
+import { assemble, distinctOpts, num, SCENARIOS, type GenSpec, type Opt } from './helpers';
 
 /**
  * Optimal order quantity generators — official Exercise 3 domain (D09).
@@ -112,7 +112,7 @@ export function genEOQCalculate(rng: Rng): Question {
         testing: 'Substituting into the order-quantity model and distinguishing the order size from related quantities such as the number of orders or the average stock.',
         matters: `D = ${t.D}, S = ${t.S}, H = ${t.H}.`,
         irrelevant: 'The product name and the company name — the model only needs the three parameters.',
-        concept: 'Q* = √(2DS/H).',
+        concept: 'Q* = √(2DS/H): the optimal order quantity balances both cost components.',
         why: 'The optimal quantity equalises the two cost components; solving (D/Q)S = (Q/2)H for Q gives the square-root formula.',
         steps: [
           `$\\dfrac{2DS}{H} = \\dfrac{2 \\cdot ${t.D} \\cdot ${t.S}}{${t.H}} = ${(2 * t.D * t.S) / t.H}$`,
@@ -149,14 +149,20 @@ export function genEOQTotalCost(rng: Rng): Question {
         `A business has an annual demand of D = ${t.D} units, ordering costs of S = €${t.S} per order and holding costs of H = €${t.H} per unit per year. ` +
         `It orders in batches of Q = ${Q} units. What are the total relevant costs (ordering plus holding) per year?`,
       options: [
+        ...(() => {
+          const pool: Opt[] = [
+            { text: `€${num(ordering, 2)}`, errorTag: 'concept_confusion', rationale: 'This counts only the ordering cost; the holding cost for the stock carried is missing.' },
+            { text: `€${num(holding, 2)}`, errorTag: 'concept_confusion', rationale: 'This counts only the holding cost; the cost of placing the orders is missing.' },
+            { text: `€${num((t.D / (2 * Q)) * t.S + ((2 * Q) / 2) * t.H, 2)}`, errorTag: 'model_assumption_error', rationale: 'Both terms were evaluated at twice the order quantity, which is not the situation described.' },
+            { text: `€${num(total + t.S, 2)}`, errorTag: 'calculation_slip', rationale: 'One extra order cost was added, as if an additional order were placed during the year.' },
+            { text: `€${num(total * 2, 2)}`, errorTag: 'calculation_slip', rationale: 'The two annual cost terms were counted twice.' },
+            { text: `€${num((t.D / Q) * t.S + Q * t.H, 2)}`, errorTag: 'model_assumption_error', rationale: 'The holding cost was computed on the full order quantity Q instead of the average stock Q/2.' },
+          ];
+          const picked = distinctOpts(pool, [`€${num(total, 2)}`], 3);
+          if (picked.length < 3) throw new Error('genEOQTotalCost: not enough distinct distractors');
+          return picked;
+        })(),
         { text: `€${num(total, 2)}`, errorTag: 'none', rationale: 'Correct: add the two annual cost terms.', correct: true },
-        { text: `€${num(ordering, 2)}`, errorTag: 'concept_confusion', rationale: 'This counts only the ordering cost; the holding cost for the stock carried is missing.' },
-        { text: `€${num(holding, 2)}`, errorTag: 'concept_confusion', rationale: 'This counts only the holding cost; the cost of placing the orders is missing.' },
-        {
-          text: `€${num((t.D / (2 * Q)) * t.S + (2 * Q / 2) * t.H, 2)}`,
-          errorTag: 'model_assumption_error',
-          rationale: 'Both terms were evaluated at twice the order quantity, which is not the situation described.',
-        },
       ],
       difficulty: 3,
       reasoningType: 'multi_step_application',
@@ -366,7 +372,7 @@ export function genEOQDirection(rng: Rng): Question {
       explanation: {
         testing: 'The economic logic behind the formula: each parameter pushes the optimum in a definite direction.',
         matters: 'Numerator (D, S) versus denominator (H) and the business meaning of each parameter.',
-        concept: 'Q* grows with D and S and falls with H.',
+        concept: 'Q* grows with demand D and ordering cost S, and falls with holding cost H.',
         why: 'Larger batches save ordering costs but lock up more capital, so anything that makes ordering expensive or storage cheap favours big batches.',
         steps: [
           'D ↑ ⇒ Q* ↑ (more units to move).',
@@ -429,10 +435,14 @@ export function genEOQCurve(rng: Rng): Question {
       label: 'OFFICIAL_SAMPLE',
       stem: stemByAsk[ask],
       figure: { kind: 'eoq_curves', D: t.D, S: t.S, H: t.H, qMax: Math.round(t.q * 2.4), highlight: ask === 'minimum' ? 'optimal' : (ask as 'ordering' | 'holding' | 'total') },
-      options: [
-        { text: correct[ask], errorTag: 'none', rationale: 'Correct: the shape of the curve identifies its role.', correct: true },
-        ...others[ask].map(([text, rationale]) => ({ text, errorTag: 'graph_misread' as const, rationale })),
-      ],
+      options: (() => {
+        const pool = others[ask]
+          .filter(([text]) => text !== correct[ask])
+          .map(([text, rationale]) => ({ text, errorTag: 'graph_misread' as const, rationale }));
+        const picked = distinctOpts(pool, [correct[ask]], 3);
+        if (picked.length < 3) throw new Error('genEOQCurve: not enough distinct distractors');
+        return [...picked, { text: correct[ask], errorTag: 'none' as const, rationale: 'Correct: the shape of the curve identifies its role.', correct: true }];
+      })(),
       difficulty: ask === 'minimum' ? 4 : 3,
       reasoningType: 'representation_transfer',
       cognitiveMove: 'interpret_representation',
@@ -516,12 +526,18 @@ export function genEOQSensitivity(rng: Rng): Question {
       conceptIds: ['C09.sensitivity', 'C09.balance'],
       label: 'PREPARATION_EXTENSION',
       stem: `A company orders twice the optimal quantity (2Q*). By what factor does the total relevant cost (ordering plus holding) increase compared with the cost at the optimum?`,
-      options: [
-        { text: 'By a factor of 1.25', errorTag: 'none', rationale: 'Correct: at 2Q* the ordering cost falls to half the optimal value while the holding cost doubles, giving 1.25 times the minimal total.', correct: true },
-        { text: 'By a factor of 2', errorTag: 'linearity_assumption', rationale: 'The cost terms move in opposite directions, so the total grows far less than the order quantity does.' },
-        { text: 'It stays exactly the same', errorTag: 'concept_confusion', rationale: 'Only at the optimum is the total minimal; any other quantity costs more.' },
-        { text: 'By a factor of 4', errorTag: 'linearity_assumption', rationale: 'Doubling a quantity does not quadruple the cost; the two terms offset each other strongly.' },
-      ],
+      options: (() => {
+        const pool = [
+          { text: 'By a factor of 2', errorTag: 'linearity_assumption' as const, rationale: 'The cost terms move in opposite directions, so the total grows far less than the order quantity does.' },
+          { text: 'It stays exactly the same', errorTag: 'concept_confusion' as const, rationale: 'Only at the optimum is the total minimal; any other quantity costs more.' },
+          { text: 'By a factor of 4', errorTag: 'linearity_assumption' as const, rationale: 'Doubling a quantity does not quadruple the cost; the two terms offset each other strongly.' },
+          { text: 'By a factor of 1.5', errorTag: 'ratio_error' as const, rationale: `The correct factor is ${num(ratio, 3)}: at 2Q* one cost component halves while the other doubles.` },
+          { text: 'By a factor of 1.1', errorTag: 'calculation_slip' as const, rationale: `The correct factor is ${num(ratio, 3)}; this value underestimates the effect on the total.` },
+        ];
+        const picked = distinctOpts(pool, ['By a factor of 1.25'], 3);
+        if (picked.length < 3) throw new Error('genEOQSensitivity: not enough distinct distractors');
+        return [...picked, { text: 'By a factor of 1.25', errorTag: 'none' as const, rationale: 'Correct: at 2Q* the ordering cost falls to half the optimal value while the holding cost doubles, giving 1.25 times the minimal total.', correct: true }];
+      })(),
       difficulty: 6,
       reasoningType: 'optimisation_reasoning',
       cognitiveMove: 'general_case',

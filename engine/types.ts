@@ -410,6 +410,7 @@ export interface ValidationStats {
   rejectionReasons: Record<string, number>;
   ambiguityRate: number;
   duplicateRate: number;
+  templateRepetitionRate?: number;
   duplicateCount: number;
   answerKeyFailures: number;
   solverDisagreements: number;

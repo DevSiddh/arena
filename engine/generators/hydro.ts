@@ -1,6 +1,6 @@
 import type { Rng } from '../rng';
 import type { Question } from '../types';
-import { assemble, num, SCENARIOS, type GenSpec, type Opt } from './helpers';
+import { assemble, distinctOpts, num, SCENARIOS, type GenSpec, type Opt } from './helpers';
 
 /**
  * Hydrostatics generators — official Exercise 2 domain (D06).
@@ -71,7 +71,7 @@ export function genPressureAtDepth(rng: Rng): Question {
     explanation: {
       testing: 'Applying the linear pressure–depth law with the official mental model (1 bar per 10 m).',
       matters: `The depth (${depth} m) and, for the total pressure, the surface pressure of about 1 bar.`,
-      concept: 'p(h) = ρgh + p₀, evaluated with ρ = 1000 kg/m³ and g ≈ 10 N/kg.',
+      concept: 'Hydrostatic pressure p(h) = ρgh + p₀, with the official simplification ρ = 1000 kg/m³, g ≈ 10 N/kg.',
       why: 'The weight of the fluid column above the point grows in proportion to its height, and for an incompressible fluid the column height equals the depth.',
       steps: [
         `$\\rho g h = 1000 \\cdot 10 \\cdot ${depth} = ${RHO * G * depth}\\,\\text{Pa}$`,
@@ -118,12 +118,18 @@ export function genPressureComparison(rng: Rng): Question {
           fluid: 'water',
           depthsScaleMax: d2 * 1.2,
         },
-        options: [
-          { text: `about $${num(diff, 2)}$ bar`, errorTag: 'none', rationale: 'Correct: only the depth *difference* matters, and 1 bar corresponds to 10 m.', correct: true },
-          { text: `about $${num(d2 / 10, 2)}$ bar`, errorTag: 'question_misread', rationale: `This is the total water pressure at B, not the difference between the two points.` },
-          { text: `about $${num(d1 / 10, 2)}$ bar`, errorTag: 'question_misread', rationale: 'This is the water pressure at A alone.' },
-          { text: `about $${num((d2 * d2 - d1 * d1) / 1000, 2)}$ bar`, errorTag: 'linearity_assumption', rationale: 'The squares of the depths were used, as if pressure grew quadratically; the growth is linear in depth.' },
-        ],
+        options: (() => {
+          const pool: Opt[] = [
+            { text: `about $${num(d2 / 10, 2)}$ bar`, errorTag: 'question_misread', rationale: 'This is the total water pressure at B, not the difference between the two points.' },
+            { text: `about $${num(d1 / 10, 2)}$ bar`, errorTag: 'question_misread', rationale: 'This is the water pressure at A alone.' },
+            { text: `about $${num((d2 * d2 - d1 * d1) / 1000, 2)}$ bar`, errorTag: 'linearity_assumption', rationale: 'The squares of the depths were used, as if pressure grew quadratically; the growth is linear in depth.' },
+            { text: `about $${num((d1 + d2) / 10, 2)}$ bar`, errorTag: 'rule_misapplication', rationale: 'The two depths were added instead of subtracted; only the difference of the depths creates a pressure difference.' },
+            { text: `about $${num((d2 - d1) / 100, 2)}$ bar`, errorTag: 'unit_error', rationale: 'The depth difference was divided by 100 instead of 10, which corresponds to 1 bar per 100 m.' },
+          ];
+          const picked = distinctOpts(pool, [`about $${num(diff, 2)}$ bar`], 3);
+          if (picked.length < 3) throw new Error('genPressureComparison: not enough distinct distractors');
+          return [...picked, { text: `about $${num(diff, 2)}$ bar`, errorTag: 'none' as const, rationale: 'Correct: only the depth *difference* matters, and 1 bar corresponds to 10 m.', correct: true }];
+        })(),
         difficulty: 2,
         reasoningType: 'rule_application',
         cognitiveMove: 'execute_rule',
@@ -132,7 +138,7 @@ export function genPressureComparison(rng: Rng): Question {
         explanation: {
           testing: 'Recognising that two pressure values share the same surface term, so only the depth difference survives the subtraction.',
           matters: `The two depths (${d1} m and ${d2} m); the absolute values of the pressures are not needed.`,
-          concept: 'Δp = ρgΔh — pressure differences depend only on depth differences.',
+          concept: 'Pressure differences: Δp = ρgΔh, so only the depth difference matters.',
           why: 'Both points sit under the same atmosphere, so the p₀ terms cancel; the remaining difference is the weight of the extra water column between the two depths.',
           steps: [
             `$p_B - p_A = \\rho g (h_B - h_A) = 1000 \\cdot 10 \\cdot ${d2 - d1}\\,\\text{Pa}$`,
@@ -225,26 +231,18 @@ export function genBuoyancyMass(rng: Rng): Question {
       conceptIds: ['C06.displaced', 'C06.buoy'],
       label: 'OFFICIAL_SAMPLE',
       stem: `${object} of volume ${num(volume, 2)} m³ floats in water. ${depthInfo} What is the mass of the object?`,
-      options: [
-        { text: `$${num(mass, 0)}$ kg`, errorTag: 'none', rationale: 'Correct: a floating body displaces water whose mass equals its own mass.', correct: true },
-        {
-          text: fullySubmerged ? `$${num(RHO * volume * 2, 0)}$ kg` : `$${num(RHO * volume, 0)}$ kg`,
-          errorTag: 'wrong_assumption',
-          rationale: fullySubmerged
-            ? 'Twice the submerged volume was used; the displaced volume equals the body volume once.'
-            : 'This assumes the whole volume is submerged, but only the stated fraction is underwater.',
-        },
-        {
-          text: `$${num(mass * G, 0)}$ N`,
-          errorTag: 'unit_error',
-          rationale: 'This is a weight force in newtons, not a mass in kilograms: the factor g was applied although the question asks for a mass.',
-        },
-        {
-          text: `$${num(mass / 2, 0)}$ kg`,
-          errorTag: 'rule_misapplication',
-          rationale: 'The displaced mass was halved a second time; the submerged fraction has already been accounted for.',
-        },
-      ],
+      options: (() => {
+        const pool: Opt[] = [
+          { text: `$${num(RHO * volume, 0)}$ kg`, errorTag: 'wrong_assumption', rationale: 'This assumes the whole volume is submerged, which is not the case here.' },
+          { text: `$${num(RHO * volume * 2, 0)}$ kg`, errorTag: 'wrong_assumption', rationale: 'Twice the volume was used; the displaced volume equals the submerged volume once.' },
+          { text: `$${num(mass * G, 0)}$ N`, errorTag: 'unit_error', rationale: 'This is a weight force in newtons, not a mass in kilograms: the factor g was applied although the question asks for a mass.' },
+          { text: `$${num(mass / 2, 0)}$ kg`, errorTag: 'rule_misapplication', rationale: 'The displaced mass was halved a second time; the submerged fraction has already been accounted for.' },
+          { text: `$${num(mass + RHO, 0)}$ kg`, errorTag: 'calculation_slip', rationale: 'The density was added to the mass instead of being applied through the volume.' },
+        ];
+        const picked = distinctOpts(pool, [`$${num(mass, 0)}$ kg`], 3);
+        if (picked.length < 3) throw new Error('genBuoyancyMass: not enough distinct distractors');
+        return [...picked, { text: `$${num(mass, 0)}$ kg`, errorTag: 'none' as const, rationale: 'Correct: a floating body displaces water whose mass equals its own mass.', correct: true }];
+      })(),
       difficulty: fullySubmerged && includeDecoy ? 3 : 2,
       reasoningType: fullySubmerged ? 'multi_step_application' : 'rule_application',
       cognitiveMove: 'execute_rule',

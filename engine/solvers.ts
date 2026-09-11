@@ -14,6 +14,8 @@ export interface SolveResult {
   value: string;
   numeric: number[];
   method: string;
+  /** When false, the alternative method is a documented approximation and is not required to agree numerically. */
+  altComparable?: boolean;
   alt?: { method: string; value: string; numeric: number[] };
   checks?: { name: string; pass: boolean; detail: string }[];
 }
@@ -258,7 +260,8 @@ export function solve(v: Verification): SolveResult | null {
         value: `${R(riseSimplified, 3)} m`,
         numeric: [R(riseSimplified, 3)],
         method: 'isothermal compression at constant temperature: V ∝ 1/p',
-        alt: { method: 'refined equilibrium with the risen water column', value: `${R(riseRefined, 3)} m`, numeric: [R(riseRefined, 3)] },
+        altComparable: false, // documented in the official solution: the refined model gives ≈1.13 m vs ≈1.2 m
+        alt: { method: 'refined equilibrium with the risen water column (documented approximation)', value: `${R(riseRefined, 3)} m`, numeric: [R(riseRefined, 3)] },
         checks: [
           {
             name: 'air cannot compress below zero volume',
@@ -594,9 +597,22 @@ export function canonicalNumbers(text: string): number[] {
   t = t.replace(/\\times/g, '×');
   // fractions a/b → keep both numbers but mark as ratio by emitting the decimal too
   const numbers: number[] = [];
+  // Scientific notation first: "3 × 10^5" / "3 \times 10^{5}" / "3e5" must count as ONE value.
+  const sci = /(-?\d+(?:[.,]\d+)?)\s*(?:\\times|×|x|\*)\s*10\s*(?:\^|\*\*)?\s*\{?\s*(-?\d+)\s*\}?/g;
+  let sm: RegExpExecArray | null;
+  const covered: [number, number][] = [];
+  while ((sm = sci.exec(t)) !== null) {
+    const mant = parseFloat(sm[1].replace(',', '.'));
+    const exp = parseInt(sm[2], 10);
+    numbers.push(R(mant * Math.pow(10, exp), 6));
+    covered.push([sm.index, sm.index + sm[0].length]);
+  }
+  const inCovered = (i: number) => covered.some(([a, b]) => i >= a && i < b);
+  t = t.replace(sci, (m) => ' '.repeat(m.length));
   const re = /-?\d+(?:[.,]\d+)?(?:\s*\/\s*-?\d+(?:[.,]\d+)?)?/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(t)) !== null) {
+    if (inCovered(m.index)) continue;
     const raw = m[0].replace(/\s/g, '');
     if (raw.includes('/')) {
       const [a, b] = raw.split('/').map((s) => parseFloat(s.replace(',', '.')));
