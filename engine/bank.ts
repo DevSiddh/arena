@@ -1,5 +1,5 @@
 import { makeRng } from './rng';
-import type { Bank, Question } from './types';
+import type { Bank, Lesson, Question } from './types';
 import { buildAndValidate, formatReport, attachStimuli, type BuildReport } from './validators';
 import { STIMULI } from './authored/stimuli';
 import { METHODOLOGY_AUTHORED } from './authored/methodology';
@@ -94,6 +94,8 @@ export interface BuildOptions {
   variantsPerFamily?: number;
   /** Total generated candidates target (applied on top of the authored items). */
   targetCandidates?: number;
+  /** The lesson layer, supplied by the caller so that the engine core stays free of content. */
+  lessons?: Lesson[];
 }
 
 export function buildBank(options: BuildOptions = {}): { bank: Bank; report: BuildReport; reportMarkdown: string } {
@@ -171,7 +173,7 @@ export function buildBank(options: BuildOptions = {}): { bank: Bank; report: Bui
   const bank: Bank = {
     questions: report.questions,
     stimuli,
-    lessons: [],
+    lessons: options.lessons ?? [],
     meta: {
       generatedAt: new Date().toISOString(),
       seed,
