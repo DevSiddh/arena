@@ -1,0 +1,6 @@
+node_modules/
+dist/
+content/bank.json
+content/validation.json
+.DS_Store
+*.log
