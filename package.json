@@ -1,0 +1,31 @@
+{
+  "name": "dmat-subject-module-lab",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "dMAT Subject Module (General Academic Module) mastery system: curriculum, teaching, original question engine, independent validation, training and exam simulation.",
+  "scripts": {
+    "build:bank": "tsx scripts/build-bank.ts",
+    "verify:bank": "python3 scripts/verify_bank.py",
+    "typecheck": "tsc --noEmit",
+    "predev": "npm run build:bank",
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "prebuild": "npm run build:bank",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173"
+  },
+  "dependencies": {
+    "katex": "^0.16.11",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.9"
+  }
+}

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+content/bank.json
+content/exam-form.json
+content/validation.json
+__pycache__/
+.DS_Store
+*.log
